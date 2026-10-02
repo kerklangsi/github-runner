@@ -11,6 +11,7 @@ const LOG_LEVEL_PRIORITY = {
 
 const SYSTEM_LOG_PATH = process.env.SYSTEM_LOG_PATH || path.join(process.env.DATA_DIR || '/app/data', 'system.log');
 const DOCKER_LOG_PATH = path.join(process.env.DATA_DIR || '/app/data', 'docker.log');
+const DEFAULT_RUNNER_DIR = process.env.RUNNER_DIR || process.env.RUNNERS_DIR || (fs.existsSync('/opt/github-runner') ? '/opt/github-runner' : '/opt/github-runners');
 
 function appendDockerLog(message) {
   const dir = path.dirname(DOCKER_LOG_PATH);
@@ -52,8 +53,7 @@ function initSystemLogs() {
     const initialLines = [
       `[${now}] [INFO] Docker container system supervisor initialized.`,
       `[${now}] [DEBUG] Memory cgroup v2 monitoring active (/sys/fs/cgroup/memory.current).`,
-      `[${now}] [INFO] Express API server listening on 0.0.0.0:3000.`,
-      `[${now}] [INFO] GitHub Workflow Monitor active: https://github.com/kerklangsi/MY-tv/actions/workflows/update_iptv.yml`
+      `[${now}] [INFO] Express API server listening on 0.0.0.0:${process.env.PORT || 3000}.`
     ].join('\n') + '\n';
     const dir = path.dirname(SYSTEM_LOG_PATH);
     if (!fs.existsSync(dir)) {
@@ -225,7 +225,7 @@ function getRunnerLogs(runnerId, options = {}) {
   const runner = runnerService.getRunnerById(runnerId);
 
   // Look for active runner directory, or fallback to archived logs
-  let runnerDir = runner ? (runner.dir || runner.runner_dir || runner.runnerDir || path.join('/opt/github-runners', runner.name || runnerId)) : null;
+  let runnerDir = runner ? (runner.dir || runner.runner_dir || runner.runnerDir || path.join(DEFAULT_RUNNER_DIR, runner.name || runnerId)) : null;
   if (!runnerDir || !fs.existsSync(runnerDir)) {
     const archivePath = path.join(process.env.DATA_DIR || '/app/data', 'archived-logs', runnerId);
     if (fs.existsSync(archivePath)) {
@@ -243,22 +243,42 @@ function getRunnerLogs(runnerId, options = {}) {
     lines = collapseMultiLineLogs(raw);
   }
 
-  // Read GitHub runner diagnostic logs from actions-runner/_diag or archive/_diag ONLY if level is explicitly DEBUG or ALL
-  const requestedLevel = (options.level || 'INFO').toUpperCase();
-  if (requestedLevel === 'DEBUG' || requestedLevel === 'ALL') {
-    let diagDir = path.join(runnerDir, 'actions-runner', '_diag');
-    if (!fs.existsSync(diagDir) && fs.existsSync(path.join(runnerDir, '_diag'))) {
-      diagDir = path.join(runnerDir, '_diag');
-    }
+  // Read GitHub runner diagnostic logs from actions-runner/_diag or archive/_diag
+  let diagDir = path.join(runnerDir, 'actions-runner', '_diag');
+  if (!fs.existsSync(diagDir) && fs.existsSync(path.join(runnerDir, '_diag'))) {
+    diagDir = path.join(runnerDir, '_diag');
+  }
 
-    if (fs.existsSync(diagDir)) {
-      const files = fs.readdirSync(diagDir).filter(f => f.startsWith('Runner_') || f.startsWith('Worker_'));
-      if (files.length > 0) {
-        files.sort((a, b) => fs.statSync(path.join(diagDir, b)).mtimeMs - fs.statSync(path.join(diagDir, a)).mtimeMs);
+  if (fs.existsSync(diagDir)) {
+    const files = fs.readdirSync(diagDir).filter(f => f.startsWith('Runner_') || f.startsWith('Worker_'));
+    if (files.length > 0) {
+      files.sort((a, b) => fs.statSync(path.join(diagDir, b)).mtimeMs - fs.statSync(path.join(diagDir, a)).mtimeMs);
+      const requestedLevel = (options.level || 'INFO').toUpperCase();
+
+      if (requestedLevel === 'DEBUG' || requestedLevel === 'ALL') {
         for (const file of files.slice(0, 3)) {
           const diagRaw = fs.readFileSync(path.join(diagDir, file), 'utf-8');
           const diagLines = collapseMultiLineLogs(diagRaw);
           lines = lines.concat(diagLines.slice(-100));
+        }
+      } else {
+        // Extract meaningful step execution & process output from the latest Worker log
+        const latestWorker = files.find(f => f.startsWith('Worker_'));
+        if (latestWorker) {
+          try {
+            const workerRaw = fs.readFileSync(path.join(diagDir, latestWorker), 'utf-8');
+            const workerLines = workerRaw.split('\n');
+            const stepEvents = [];
+            for (const wl of workerLines) {
+              if (/Job ID|Starting the job|Initialize job|Total job steps|Run all job steps|Starting process:|Job result after|Publish step telemetry|Finished process \d+ with exit code/i.test(wl)) {
+                const clean = wl.replace(/\s+/g, ' ').trim();
+                if (clean) stepEvents.push(`[GitHub Actions] ${clean}`);
+              }
+            }
+            if (stepEvents.length > 0) {
+              lines = lines.concat(stepEvents.slice(-60));
+            }
+          } catch (e) {}
         }
       }
     }
@@ -437,7 +457,7 @@ function clearGlobalLogs() {
     const runnerService = require('./runnerService');
     const runners = runnerService.getAllRunners();
     runners.forEach(r => {
-      const rDir = r.dir || r.runner_dir || r.runnerDir || path.join('/opt/github-runners', r.name || r.id);
+      const rDir = r.dir || r.runner_dir || r.runnerDir || path.join(DEFAULT_RUNNER_DIR, r.name || r.id);
       const lFile = path.join(rDir, 'logs', 'runner.log');
       if (fs.existsSync(lFile)) fs.writeFileSync(lFile, '');
       const diagDir = path.join(rDir, 'actions-runner', '_diag');
@@ -470,7 +490,7 @@ function clearGlobalLogs() {
 function clearRunnerLogs(runnerId) {
   const runnerService = require('./runnerService');
   const runner = runnerService.getRunnerById(runnerId);
-  const runnerDir = runner ? (runner.dir || runner.runner_dir || runner.runnerDir || path.join('/opt/github-runners', runner.name || runnerId)) : null;
+  const runnerDir = runner ? (runner.dir || runner.runner_dir || runner.runnerDir || path.join(DEFAULT_RUNNER_DIR, runner.name || runnerId)) : null;
 
   if (runnerDir && fs.existsSync(runnerDir)) {
     const logFile = path.join(runnerDir, 'logs', 'runner.log');

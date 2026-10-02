@@ -1,5 +1,5 @@
-import React from 'react';
-import { FileText, Trash2, Copy, Download } from 'lucide-react';
+import React, { useState } from 'react';
+import { FileText, Trash2, Copy, Download, Check } from 'lucide-react';
 
 export default function GlobalLogsTab({
   globalLogs,
@@ -12,6 +12,7 @@ export default function GlobalLogsTab({
   handleSaveLogFile,
   settings
 }) {
+  const [copied, setCopied] = useState(false);
   const filteredLogs = globalLogs.filter(line => !globalLogSearch || line.toLowerCase().includes(globalLogSearch.toLowerCase()));
 
   return (
@@ -55,11 +56,19 @@ export default function GlobalLogsTab({
         {/* Save & Copy Buttons Positioned at Bottom Right */}
         <div className="absolute bottom-4 right-4 flex items-center gap-2 z-10">
           <button 
-            onClick={() => handleCopyLogs(globalLogs)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#21262d] hover:bg-[#30363d] text-white text-xs font-medium rounded-lg border border-[#30363d] shadow-lg transition"
+            onClick={() => {
+              const text = renderLogLines(filteredLogs.length > 0 ? filteredLogs : globalLogs, 'global');
+              const res = handleCopyLogs(text);
+              if (res !== false) {
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2500);
+              }
+            }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 ${copied ? 'bg-[#238636] border-[#2ea043]' : 'bg-[#21262d] hover:bg-[#30363d] border-[#30363d]'} text-white text-xs font-semibold rounded-lg border shadow-lg transition-all duration-200`}
             title="Copy Full Log"
           >
-            <Copy className="w-3.5 h-3.5 text-[#58a6ff]" /> Copy Log
+            {copied ? <Check className="w-3.5 h-3.5 text-white" /> : <Copy className="w-3.5 h-3.5 text-[#58a6ff]" />}
+            <span>{copied ? 'Logs Copied!' : 'Copy Log'}</span>
           </button>
 
           <button 

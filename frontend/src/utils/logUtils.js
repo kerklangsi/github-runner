@@ -11,12 +11,60 @@ export function formatUptime(seconds) {
 }
 
 /**
- * Copy logs array to clipboard
+ * Copy logs array to clipboard (supports both HTTPS and non-secure HTTP contexts)
  */
 export function handleCopyLogs(logsArray, triggerToast) {
-  const text = Array.isArray(logsArray) ? logsArray.join('\n') : String(logsArray);
-  navigator.clipboard.writeText(text);
-  if (triggerToast) triggerToast('Logs copied to clipboard!', 'success');
+  const text = Array.isArray(logsArray) ? logsArray.join('\n') : String(logsArray || '');
+  if (!text || !text.trim()) {
+    if (triggerToast) triggerToast('No logs available to copy', 'info');
+    return false;
+  }
+
+  // If on non-secure origin (e.g. http://192.168.0.100:3000), execute synchronous fallback immediately
+  // to stay within the browser's active user gesture activation window.
+  if (!window.isSecureContext || !navigator.clipboard?.writeText) {
+    return copyFallback(text, triggerToast);
+  }
+
+  // Secure context (HTTPS or localhost)
+  navigator.clipboard.writeText(text)
+    .then(() => {
+      if (triggerToast) triggerToast('Logs copied to clipboard!', 'success');
+    })
+    .catch(() => {
+      copyFallback(text, triggerToast);
+    });
+  return true;
+}
+
+function copyFallback(text, triggerToast) {
+  let success = false;
+  try {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.top = '0';
+    textArea.style.left = '0';
+    textArea.style.position = 'fixed';
+    textArea.style.opacity = '0';
+    textArea.style.pointerEvents = 'none';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    textArea.setSelectionRange(0, text.length);
+    success = document.execCommand('copy');
+    document.body.removeChild(textArea);
+  } catch (err) {
+    success = false;
+  }
+
+  if (triggerToast) {
+    if (success) {
+      triggerToast('Logs copied to clipboard!', 'success');
+    } else {
+      triggerToast('Unable to copy logs to clipboard', 'error');
+    }
+  }
+  return success;
 }
 
 /**

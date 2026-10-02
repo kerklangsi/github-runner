@@ -6,8 +6,7 @@ export default function TopHeader({
   currentUsername,
   setActiveTab,
   handleLogout,
-  versionInfo,
-  setIsAboutModalOpen
+  versionInfo
 }) {
   return (
     <header className="h-14 bg-[#161b22] border-b border-[#30363d] px-6 flex items-center justify-between z-20 shrink-0">
@@ -36,14 +35,6 @@ export default function TopHeader({
             <span>Update {versionInfo.latestVersion} Available</span>
           </a>
         )}
-
-        <button 
-          onClick={() => setIsAboutModalOpen && setIsAboutModalOpen(true)}
-          className="text-xs text-[#8b949e] hover:text-white px-2 py-1 rounded hover:bg-[#21262d] transition"
-          title="App Info & Updates"
-        >
-          {versionInfo?.currentVersion || 'v2.0.0'}
-        </button>
 
         <button 
           onClick={() => setActiveTab('settings')}

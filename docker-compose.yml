@@ -7,14 +7,9 @@ services:
     restart: unless-stopped
     network_mode: bridge
     ports:
-      - target: 8080
-        published: 8080
+      - target: 3000
+        published: 3000
         protocol: tcp
-    environment:
-      - PORT=8080
-      - DATA_DIR=/app/data
-      - RUNNERS_DIR=/opt/github-runners
-      - RUNNER_TOOL_CACHE=/opt/hostedtoolcache
     volumes:
       - type: bind
         source: /var/run/docker.sock
@@ -23,8 +18,8 @@ services:
         source: /DATA/AppData/github-runner/data
         target: /app/data
       - type: bind
-        source: /DATA/AppData/github-runner/runners
-        target: /opt/github-runners
+        source: /DATA/AppData/github-runner/runner
+        target: /opt/github-runner
       - type: bind
         source: /DATA/AppData/github-runner/shared_data
         target: /opt/shared_data

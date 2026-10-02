@@ -29,9 +29,12 @@ export default function DeleteRunnerModal({
           </button>
         </div>
 
-        <p className="text-xs text-[#c9d1d9] leading-relaxed">
-          This will stop and unregister the runner container instance from GitHub.
-        </p>
+        <div className="text-xs text-[#c9d1d9] space-y-2 leading-relaxed bg-[#0d1117] p-3.5 rounded-xl border border-[#30363d]">
+          <p>This stops the runner process and deletes local instance files.</p>
+          <p className="text-[#8b949e]">
+            <strong className="text-[#58a6ff]">GitHub.com Unregistration:</strong> If a PAT is configured in Settings, the runner is automatically deleted from GitHub. If you registered with an ephemeral token (BNX...), you can also remove the offline runner on GitHub anytime: <strong className="text-white">Settings → Actions → Runners → "..." → Remove runner</strong>.
+          </p>
+        </div>
 
         {/* Checkbox: Remove work directory */}
         <label className="flex items-center gap-2 text-xs text-[#c9d1d9] bg-[#0d1117] border border-[#30363d] p-3 rounded-xl cursor-pointer select-none">

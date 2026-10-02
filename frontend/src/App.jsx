@@ -58,7 +58,6 @@ export default function App() {
         setActiveTab={s.setActiveTab}
         handleLogout={s.handleLogout}
         versionInfo={s.versionInfo}
-        setIsAboutModalOpen={s.setIsAboutModalOpen}
       />
 
       <div className="flex flex-1 overflow-hidden">

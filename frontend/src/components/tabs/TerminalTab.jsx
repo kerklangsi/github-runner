@@ -1,5 +1,5 @@
-import React from 'react';
-import { Terminal, Trash2, Copy, Play, RefreshCw } from 'lucide-react';
+import React, { useState } from 'react';
+import { Terminal, Trash2, Copy, Play, RefreshCw, Check } from 'lucide-react';
 
 export default function TerminalTab({
   terminalOutput,
@@ -15,6 +15,8 @@ export default function TerminalTab({
   handleCopyLogs,
   settings
 }) {
+  const [copied, setCopied] = useState(false);
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-[#161b22] border border-[#30363d] p-4 rounded-xl shadow-sm">
@@ -37,11 +39,18 @@ export default function TerminalTab({
             <Trash2 className="w-3.5 h-3.5 text-[#da3633]" /> Clear
           </button>
           <button
-            onClick={() => handleCopyLogs(terminalOutput.map(o => o.text))}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#21262d] hover:bg-[#30363d] text-white text-xs font-medium rounded-lg border border-[#30363d] transition"
+            onClick={() => {
+              const res = handleCopyLogs(terminalOutput.map(o => o.text));
+              if (res !== false) {
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2500);
+              }
+            }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 ${copied ? 'bg-[#238636] border-[#2ea043]' : 'bg-[#21262d] hover:bg-[#30363d] border-[#30363d]'} text-white text-xs font-medium rounded-lg border transition-all duration-200`}
             title="Copy Output"
           >
-            <Copy className="w-3.5 h-3.5 text-[#58a6ff]" /> Copy
+            {copied ? <Check className="w-3.5 h-3.5 text-white" /> : <Copy className="w-3.5 h-3.5 text-[#58a6ff]" />}
+            <span>{copied ? 'Copied!' : 'Copy'}</span>
           </button>
         </div>
       </div>
@@ -136,7 +145,7 @@ export default function TerminalTab({
                 }
               }
             }}
-            placeholder="Type bash command (e.g. ps aux, df -h, ls -la /opt/github-runners)..."
+            placeholder="Type bash command (e.g. ps aux, df -h, ls -la /opt/github-runner)..."
             disabled={isTerminalRunning}
             className="flex-1 bg-transparent border-none text-white text-xs font-mono focus:outline-none placeholder:text-[#8b949e]"
           />

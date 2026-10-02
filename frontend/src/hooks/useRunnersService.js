@@ -88,14 +88,20 @@ export function useRunnersService(triggerToast, showConfirm, logLevelRef) {
           }
         });
       }
+      const importedToken = parsed.registrationToken || parsed.token || parsed.accessToken || prev.registrationToken;
       setAddForm(prev => ({
         name: parsed.name || parsed.runnerName || prev.name,
         githubUrl: parsed.githubUrl || parsed.url || parsed.targetUrl || prev.githubUrl,
-        registrationToken: parsed.registrationToken || parsed.token || parsed.accessToken || prev.registrationToken,
+        registrationToken: importedToken,
         labels: parsed.labels || parsed.runnerLabels || prev.labels,
         runnerGroup: parsed.runnerGroup || prev.runnerGroup
       }));
-      triggerToast(`Config imported from ${file.name}!`, 'success');
+
+      if (importedToken && !importedToken.startsWith('ghp_') && !importedToken.startsWith('github_pat_')) {
+        triggerToast(`Config loaded from ${file.name}. Note: Temporary tokens expire after 1 hr; use a PAT if needed.`, 'info');
+      } else {
+        triggerToast(`Config imported from ${file.name}!`, 'success');
+      }
     };
     reader.readAsText(file);
   }

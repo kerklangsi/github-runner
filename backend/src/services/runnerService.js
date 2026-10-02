@@ -4,7 +4,7 @@ const { spawn, spawnSync, execSync } = require('child_process');
 const db = require('../db/database');
 const logService = require('./logService');
 
-const BASE_RUNNERS_DIR = process.env.RUNNERS_DIR || '/opt/github-runners';
+const BASE_RUNNERS_DIR = process.env.RUNNER_DIR || process.env.RUNNERS_DIR || (fs.existsSync('/opt/github-runner') ? '/opt/github-runner' : '/opt/github-runners');
 const SHARED_DATA_DIR = process.env.SHARED_DATA_DIR || '/opt/shared_data';
 
 // Ensures base runners and shared data working directories exist on disk.
@@ -222,11 +222,16 @@ function createRunner(options) {
         }
         if (apiUrl) {
           try {
-            const curlCmd = `curl -s -X POST -H "Authorization: token ${regToken}" -H "Accept: application/vnd.github+json" "${apiUrl}"`;
+            const authHeader = (regToken.startsWith('github_pat_') || regToken.startsWith('ghp_')) ? `Bearer ${regToken}` : `token ${regToken}`;
+            const curlCmd = `curl -s -X POST -H "Authorization: ${authHeader}" -H "User-Agent: GitHubRunnerManager/3.0" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "${apiUrl}"`;
             const tokenRes = execSync(curlCmd, { encoding: 'utf-8' });
             const parsed = JSON.parse(tokenRes || '{}');
             if (parsed.token) {
               regToken = parsed.token;
+              logService.addSystemLog('INFO', `Successfully exchanged GitHub PAT for fresh runner registration token for '${sanitizedName}'.`);
+            } else {
+              const errMsg = parsed.message || 'GitHub API did not return registration token';
+              logService.addSystemLog('WARN', `GitHub PAT exchange failed: ${errMsg}`);
             }
           } catch (e) {
             logService.addSystemLog('WARN', `Failed to exchange GitHub PAT for registration token: ${e.message}`);
@@ -273,7 +278,7 @@ function createRunner(options) {
         } else {
           let userMsg = 'Runner registration failed on GitHub.';
           if (output.includes('404')) {
-            userMsg = 'GitHub returned 404 Not Found. Check your Target Repository URL or Token permissions.';
+            userMsg = 'GitHub returned 404 Not Found. Ephemeral registration tokens (BNX...) expire after 1 hour — use a GitHub Personal Access Token (ghp_...) or generate a new registration token in GitHub repo Settings.';
           } else if (output.includes('401') || output.includes('Unauthorized')) {
             userMsg = 'GitHub authentication failed. Your Token is invalid or expired.';
           }
@@ -441,8 +446,8 @@ function restartRunner(id) {
   return startRunner(id);
 }
 
-// Removes runner registration, archives log files, and optionally deletes working directory.
-function removeRunner(id, removeWorkDir = false) {
+// Removes runner registration, unregisters from GitHub, archives log files, and cleans up directory.
+function removeRunner(id, removeWorkDir = false, token = null) {
   stopRunner(id);
   const runners = db.getRunners();
   const runnerIndex = runners.findIndex(r => r.id === id);
@@ -453,7 +458,42 @@ function removeRunner(id, removeWorkDir = false) {
 
   const runner = runners[runnerIndex];
 
-  // Archive runner logs to persistent data directory before deletion
+  // 1. Attempt automatic GitHub API unregistration if a PAT is available
+  const patToken = token || 
+    (runner.registrationToken && (runner.registrationToken.startsWith('ghp_') || runner.registrationToken.startsWith('github_pat_')) ? runner.registrationToken : null) || 
+    (db.getSettings().accessToken && db.getSettings().accessToken.trim());
+
+  if (patToken && runner.githubUrl) {
+    try {
+      const repoInfo = extractRepoInfo(runner.githubUrl);
+      const authHeader = (patToken.startsWith('github_pat_') || patToken.startsWith('ghp_')) ? `Bearer ${patToken}` : `token ${patToken}`;
+      const listUrl = repoInfo.repo 
+        ? `https://api.github.com/repos/${repoInfo.org}/${repoInfo.repo}/actions/runners`
+        : `https://api.github.com/orgs/${repoInfo.org}/actions/runners`;
+
+      const curlList = `curl -s -H "Authorization: ${authHeader}" -H "User-Agent: GitHubRunnerManager/3.0" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "${listUrl}"`;
+      const listRes = execSync(curlList, { encoding: 'utf-8' });
+      const parsed = JSON.parse(listRes || '{}');
+
+      if (Array.isArray(parsed.runners)) {
+        const match = parsed.runners.find(r => r.name === runner.name);
+        if (match && match.id) {
+          const deleteUrl = repoInfo.repo 
+            ? `https://api.github.com/repos/${repoInfo.org}/${repoInfo.repo}/actions/runners/${match.id}`
+            : `https://api.github.com/orgs/${repoInfo.org}/actions/runners/${match.id}`;
+          const curlDel = `curl -s -X DELETE -H "Authorization: ${authHeader}" -H "User-Agent: GitHubRunnerManager/3.0" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "${deleteUrl}"`;
+          execSync(curlDel);
+          logService.addSystemLog('INFO', `Successfully unregistered and removed runner '${runner.name}' (GitHub ID: ${match.id}) from GitHub.`);
+        }
+      }
+    } catch (e) {
+      logService.addSystemLog('WARN', `Could not automatically unregister runner '${runner.name}' from GitHub API: ${e.message}`);
+    }
+  } else {
+    logService.addSystemLog('INFO', `Runner '${runner.name}' removed locally. (To remove offline runner on GitHub.com: Repo Settings -> Actions -> Runners -> '...' -> Remove runner).`);
+  }
+
+  // 2. Archive runner logs to persistent data directory before deletion
   try {
     const archiveBase = path.join(process.env.DATA_DIR || '/app/data', 'archived-logs', runner.name || id);
     if (!fs.existsSync(archiveBase)) {

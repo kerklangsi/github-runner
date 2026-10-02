@@ -24,7 +24,7 @@ function formatDate(dateStr) {
 export default function FilesTab({ triggerToast, settings }) {
   const [currentDir, setCurrentDir] = useState('/opt/shared_data');
   const [items, setItems] = useState([]);
-  const [roots, setRoots] = useState(['/opt/shared_data', '/opt/github-runners', '/app/data']);
+  const [roots, setRoots] = useState(['/opt/shared_data', '/opt/github-runner', '/app/data']);
   const [loading, setLoading] = useState(false);
   const [filterQuery, setFilterQuery] = useState('');
   const [previewFile, setPreviewFile] = useState(null);

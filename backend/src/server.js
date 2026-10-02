@@ -10,6 +10,7 @@ const logService = require('./services/logService');
 const watchdogService = require('./services/watchdogService');
 const webhookService = require('./services/webhookService');
 const versionService = require('./services/versionService');
+const fileService = require('./services/fileService');
 const db = require('./db/database');
 
 const app = express();
@@ -191,7 +192,8 @@ app.post('/api/runners/:id/restart', (req, res) => {
 // 5. Remove runner
 app.delete('/api/runners/:id', (req, res) => {
   const removeWorkDir = req.query.removeWorkDir === 'true';
-  const result = runnerService.removeRunner(req.params.id, removeWorkDir);
+  const token = req.query.token || req.headers['x-github-token'];
+  const result = runnerService.removeRunner(req.params.id, removeWorkDir, token);
   res.json(result);
 });
 
@@ -293,7 +295,8 @@ function parseWorkflowHistory(runnerId) {
   try {
     const runner = runnerService.getRunnerById(runnerId);
     if (!runner) return [];
-    const runnerDir = runner.dir || runner.runner_dir || runner.runnerDir || `/opt/github-runners/${runner.name || runnerId}`;
+    const defaultBase = (process.env.RUNNER_DIR || (require('fs').existsSync('/opt/github-runner') ? '/opt/github-runner' : '/opt/github-runners'));
+    const runnerDir = runner.dir || runner.runner_dir || runner.runnerDir || `${defaultBase}/${runner.name || runnerId}`;
     const logFile = require('path').join(runnerDir, 'logs', 'runner.log');
     if (!require('fs').existsSync(logFile)) return [];
     const lines = require('fs').readFileSync(logFile, 'utf-8').split('\n');
@@ -330,8 +333,43 @@ app.get('/api/workflows', (req, res) => {
   res.json(all.slice(0, 100));
 });
 
-// 14. Backup & Restore
-app.get('/api/backup', (req, res) => {
+// 14. File Explorer Endpoints
+app.get('/api/files', (req, res) => {
+  try {
+    const dir = req.query.dir || fileService.ALLOWED_ROOTS[0];
+    const data = fileService.listFiles(dir);
+    res.json(data);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get('/api/files/content', (req, res) => {
+  try {
+    const file = req.query.file;
+    if (!file) return res.status(400).json({ error: 'File path required' });
+    const data = fileService.readFile(file);
+    res.json(data);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get('/api/files/download', (req, res) => {
+  try {
+    const file = req.query.file;
+    const safePath = fileService.checkPath(file);
+    if (!safePath || !fs.existsSync(safePath)) {
+      return res.status(404).json({ error: 'File not found or access denied' });
+    }
+    res.download(safePath, path.basename(safePath));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 15. Backup & Restore (supported on both /api/backup and /api/settings/backup)
+const handleBackupReq = (req, res) => {
   const runners = runnerService.getAllRunners().map(r => ({
     name: r.name, githubUrl: r.githubUrl, registrationToken: r.registrationToken,
     labels: r.labels, runnerGroup: r.runnerGroup, watchdog: r.watchdog
@@ -340,9 +378,11 @@ app.get('/api/backup', (req, res) => {
   const backup = { version: 1, exportedAt: new Date().toISOString(), runners, settings };
   res.setHeader('Content-Disposition', `attachment; filename="runner-manager-backup-${new Date().toISOString().slice(0, 10)}.json"`);
   res.json(backup);
-});
+};
+app.get('/api/backup', handleBackupReq);
+app.get('/api/settings/backup', handleBackupReq);
 
-app.post('/api/restore', (req, res) => {
+const handleRestoreReq = (req, res) => {
   try {
     const { runners, settings } = req.body || {};
     if (settings) {
@@ -358,15 +398,20 @@ app.post('/api/restore', (req, res) => {
         if (found) {
           runnerService.updateRunnerConfig(found.id, cfg);
           restored++;
+        } else if (cfg.name && cfg.githubUrl && (cfg.registrationToken || cfg.token)) {
+          runnerService.createRunner(cfg);
+          restored++;
         }
       }
     }
-    logService.addSystemLog('INFO', `Backup restored: ${restored} runner config(s) updated.`);
+    logService.addSystemLog('INFO', `Backup restored: ${restored} runner container config(s) processed.`);
     res.json({ success: true, runnersRestored: restored });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
-});
+};
+app.post('/api/restore', handleRestoreReq);
+app.post('/api/settings/restore', handleRestoreReq);
 
 // 15. Webhook test
 app.post('/api/webhook/test', async (req, res) => {
