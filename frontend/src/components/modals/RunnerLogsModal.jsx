@@ -31,7 +31,7 @@ export default function RunnerLogsModal({
             <h3 className="text-white font-semibold text-base flex items-center gap-2">
               Log View: {selectedRunner.name}
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${isWorkflow ? 'bg-[#238636]/20 text-[#3fb950] border-[#238636]/40' : 'bg-[#1f6feb]/20 text-[#58a6ff] border-[#1f6feb]/40'}`}>
-                {isWorkflow ? 'job-logs.txt' : 'runner.log'}
+                {isWorkflow ? 'job-logs.txt (Clean Output)' : 'runner.log'}
               </span>
             </h3>
             <span className="text-xs text-[#8b949e]">{selectedRunner.dir}</span>

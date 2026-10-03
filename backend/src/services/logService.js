@@ -123,9 +123,69 @@ function harvestLogs() {
   } catch (e) {}
 }
 
-// Starts the periodic background log harvester.
+// Checks whether any registered runner is currently executing a job.
+function checkBusy() {
+  try {
+    const runnerService = require('./runnerService');
+    const runners = runnerService.getAllRunners();
+    return runners.some(r => r.status === 'BUSY');
+  } catch (e) {
+    return false;
+  }
+}
+
+let harvesterTimer = null;
+
+// Starts the adaptive background log harvester triggered on busy mode.
 function startHarvester() {
-  setInterval(harvestLogs, 1000);
+  if (harvesterTimer) clearInterval(harvesterTimer);
+  harvesterTimer = setInterval(() => {
+    if (checkBusy()) {
+      harvestLogs();
+    }
+  }, 1000);
+}
+
+// Filters out standard setup and cleanup steps from workflow logs.
+function filterSteps(lines) {
+  const IGNORED_STEP_PATTERNS = [
+    /set\s*up\s*job/i,
+    /checkout(\s*repository)?/i,
+    /actions\/checkout/i,
+    /set\s*up\s*python/i,
+    /actions\/setup-python/i,
+    /install\s*dependencies/i,
+    /post\s*set\s*up\s*python/i,
+    /post\s*checkout/i,
+    /complete\s*job/i
+  ];
+
+  const result = [];
+  let skipping = false;
+
+  for (const line of lines) {
+    if (line.includes('##[group]')) {
+      const stepTitle = line.split('##[group]')[1] || '';
+      const isIgnored = IGNORED_STEP_PATTERNS.some(p => p.test(stepTitle.trim()));
+      if (isIgnored) {
+        skipping = true;
+        continue;
+      } else {
+        skipping = false;
+      }
+    } else if (line.includes('##[endgroup]')) {
+      if (skipping) {
+        skipping = false;
+        continue;
+      }
+    }
+
+    if (!skipping) {
+      result.push(line);
+    }
+  }
+
+  return result;
 }
 
 // Reads the latest job execution log lines from disk.
@@ -340,14 +400,18 @@ function getRunnerLogs(runnerId, options = {}) {
     }
   }
 
+  harvestLogs();
   const requestedSource = (options.source || '').toLowerCase();
-  const workflowLines = readWorkflow(runnerDir);
-  const serveWorkflow = requestedSource === 'workflow' || (!requestedSource && workflowLines.length > 0) || (requestedSource !== 'daemon' && workflowLines.length > 0);
+  const rawWorkflowLines = readWorkflow(runnerDir);
+  const serveWorkflow = requestedSource === 'workflow' || (!requestedSource && rawWorkflowLines.length > 0) || (requestedSource !== 'daemon' && rawWorkflowLines.length > 0);
 
   if (serveWorkflow) {
-    let resultLines = workflowLines;
+    let resultLines = rawWorkflowLines;
     if (resultLines.length === 0) {
       resultLines = ['[GitHub Actions] No workflow execution logs captured yet. Live step output (job-logs.txt) will stream here automatically when a job runs on this runner.'];
+    } else if (options.raw !== 'true' && options.raw !== true) {
+      const filtered = filterSteps(resultLines);
+      resultLines = filtered.length > 0 ? filtered : ['[GitHub Actions] Standard setup and cleanup steps (Set up job, Checkout repository, Set up Python, Install dependencies, Complete job) were filtered out. Custom script output will stream here.'];
     }
     if (options.search) {
       const query = options.search.toLowerCase();
@@ -357,7 +421,7 @@ function getRunnerLogs(runnerId, options = {}) {
     return {
       lines: resultLines.slice(-limit),
       source: 'workflow',
-      hasWorkflowLogs: workflowLines.length > 0
+      hasWorkflowLogs: rawWorkflowLines.length > 0
     };
   }
 
@@ -403,7 +467,7 @@ function getRunnerLogs(runnerId, options = {}) {
   return {
     lines: lines.slice(-limit),
     source: 'daemon',
-    hasWorkflowLogs: workflowLines.length > 0
+    hasWorkflowLogs: rawWorkflowLines.length > 0
   };
 }
 
@@ -633,5 +697,7 @@ module.exports = {
   getGlobalLogs,
   clearGlobalLogs,
   clearRunnerLogs,
-  startHarvester
+  startHarvester,
+  harvestLogs,
+  filterSteps
 };

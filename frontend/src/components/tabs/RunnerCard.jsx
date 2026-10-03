@@ -33,6 +33,8 @@ export default function RunnerCard({
     runnerGroup: runner.runnerGroup || 'Default'
   };
 
+  const isRunning = runner.status === 'ONLINE' || runner.status === 'BUSY' || runner.status === 'IDLE';
+
   return (
     <div className="bg-[#161b22] border border-[#30363d] rounded-xl p-5 space-y-3 shadow-sm">
       {/* Card Header: name + status + edit button */}
@@ -217,30 +219,40 @@ export default function RunnerCard({
         {/* Top Tier: Start, Stop, Restart */}
         <div className="grid grid-cols-3 gap-2">
           <button 
-            onClick={() => handleStart(runner.id)} 
-            disabled={runner.status === 'ONLINE' || runner.status === 'BUSY'}
+            onClick={() => !isRunning && handleStart(runner.id)} 
+            disabled={isRunning}
             className={`${
-              runner.status === 'ONLINE' || runner.status === 'BUSY'
-                ? 'bg-[#238636]/30 text-white/50 cursor-not-allowed'
-                : 'bg-[#238636] hover:bg-[#2ea043] text-white'
-            } text-xs font-semibold py-2 px-2 rounded-lg text-center transition flex items-center justify-center gap-1 shadow-sm`}
-            title={runner.status === 'ONLINE' ? 'Runner is already running' : 'Start runner'}
+              isRunning
+                ? 'bg-[#238636]/20 text-white/40 border border-[#238636]/20 cursor-not-allowed'
+                : 'bg-[#238636] hover:bg-[#2ea043] text-white shadow-sm cursor-pointer'
+            } text-xs font-semibold py-2 px-2 rounded-lg text-center transition flex items-center justify-center gap-1`}
+            title={isRunning ? 'Runner is currently running (Start disabled)' : 'Start runner'}
           >
             <Play className="w-3.5 h-3.5 fill-current" /> Start
           </button>
 
           <button 
-            onClick={() => handleStop(runner.id)} 
-            className="bg-[#da3633]/20 hover:bg-[#da3633] text-[#f85149] hover:text-white border border-[#da3633]/40 text-xs font-semibold py-2 px-2 rounded-lg text-center transition flex items-center justify-center gap-1"
-            title="Stop runner"
+            onClick={() => isRunning && handleStop(runner.id)} 
+            disabled={!isRunning}
+            className={`${
+              !isRunning
+                ? 'bg-[#21262d] text-[#8b949e]/40 border border-[#30363d]/50 cursor-not-allowed'
+                : 'bg-[#da3633]/20 hover:bg-[#da3633] text-[#f85149] hover:text-white border border-[#da3633]/40 cursor-pointer'
+            } text-xs font-semibold py-2 px-2 rounded-lg text-center transition flex items-center justify-center gap-1`}
+            title={isRunning ? 'Stop runner' : 'Runner is not running (Stop disabled)'}
           >
             <Square className="w-3.5 h-3.5 fill-current" /> Stop
           </button>
 
           <button 
-            onClick={() => handleRestart(runner.id)} 
-            className="bg-[#1f6feb]/20 hover:bg-[#1f6feb] text-[#58a6ff] hover:text-white border border-[#1f6feb]/40 text-xs font-semibold py-2 px-2 rounded-lg text-center transition flex items-center justify-center gap-1"
-            title="Restart runner"
+            onClick={() => isRunning && handleRestart(runner.id)} 
+            disabled={!isRunning}
+            className={`${
+              !isRunning
+                ? 'bg-[#21262d] text-[#8b949e]/40 border border-[#30363d]/50 cursor-not-allowed'
+                : 'bg-[#1f6feb]/20 hover:bg-[#1f6feb] text-[#58a6ff] hover:text-white border border-[#1f6feb]/40 cursor-pointer'
+            } text-xs font-semibold py-2 px-2 rounded-lg text-center transition flex items-center justify-center gap-1`}
+            title={isRunning ? 'Restart runner' : 'Runner is not running (Restart disabled)'}
           >
             <RefreshCw className="w-3.5 h-3.5" /> Restart
           </button>

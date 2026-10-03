@@ -81,6 +81,12 @@ function checkRunnerProcessState(runner) {
     } catch (e) {}
 
     status = isWorkerRunning ? "BUSY" : "IDLE";
+    if (isWorkerRunning || (runner.lastState === "BUSY" && status === "IDLE")) {
+      try {
+        const logService = require('./logService');
+        logService.harvestLogs();
+      } catch (e) {}
+    }
   } else {
     runner.pid = null;
     status = "OFFLINE";
