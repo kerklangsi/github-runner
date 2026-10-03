@@ -1,11 +1,13 @@
 import React from 'react';
-import { Clock, RefreshCw } from 'lucide-react';
+import { Clock, RefreshCw, FileCode2 } from 'lucide-react';
 
 export default function WorkflowsTab({
   workflowHistory,
   workflowLoading,
   fetchWorkflows,
-  settings
+  settings,
+  runners = [],
+  openLogs
 }) {
   return (
     <div className="space-y-4">
@@ -43,6 +45,7 @@ export default function WorkflowsTab({
                 <th className="text-left px-4 py-3 text-[#8b949e] font-semibold">Started</th>
                 <th className="text-left px-4 py-3 text-[#8b949e] font-semibold">Duration</th>
                 <th className="text-left px-4 py-3 text-[#8b949e] font-semibold">Status</th>
+                <th className="text-right px-4 py-3 text-[#8b949e] font-semibold">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -70,6 +73,23 @@ export default function WorkflowsTab({
                     }`}>
                       {job.status || 'running'}
                     </span>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    {openLogs && (
+                      <button
+                        onClick={() => {
+                          const targetRunner = runners.find(r => r.name === job.runner || r.id === job.runnerId);
+                          if (targetRunner) {
+                            openLogs(targetRunner, 'workflow');
+                          }
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#21262d] hover:bg-[#30363d] text-white rounded border border-[#30363d] text-[11px] font-medium transition"
+                        title="View workflow job logs (job-logs.txt)"
+                      >
+                        <FileCode2 className="w-3 h-3 text-[#58a6ff]" />
+                        <span>View Log</span>
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

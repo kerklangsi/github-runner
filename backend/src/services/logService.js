@@ -46,6 +46,111 @@ function addSystemLog(level = 'INFO', message = '') {
   fs.appendFileSync(SYSTEM_LOG_PATH, line);
 }
 
+const trackedOffsets = {};
+const activeTimelines = {};
+
+// Harvests live step chunk pages from actions-runner into persistent job-logs.txt.
+function harvestLogs() {
+  try {
+    const runnerService = require('./runnerService');
+    const runners = runnerService.getAllRunners();
+    runners.forEach(runner => {
+      const runnerDir = runner.dir || runner.runner_dir || runner.runnerDir || path.join(DEFAULT_RUNNER_DIR, runner.name || runner.id);
+      const diagPages = path.join(runnerDir, 'actions-runner', '_diag', 'pages');
+      if (!fs.existsSync(diagPages)) return;
+
+      let pageFiles;
+      try {
+        pageFiles = fs.readdirSync(diagPages).filter(f => f.endsWith('.log'));
+      } catch (e) { return; }
+      if (!pageFiles || pageFiles.length === 0) return;
+
+      pageFiles.sort((a, b) => {
+        try {
+          return fs.statSync(path.join(diagPages, a)).mtimeMs - fs.statSync(path.join(diagPages, b)).mtimeMs;
+        } catch (e) { return 0; }
+      });
+
+      const logsDir = path.join(runnerDir, 'logs');
+      if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });
+      const jobLogPath = path.join(logsDir, 'job-logs.txt');
+      const workflowsDir = path.join(logsDir, 'workflows');
+      if (!fs.existsSync(workflowsDir)) fs.mkdirSync(workflowsDir, { recursive: true });
+
+      pageFiles.forEach(file => {
+        const fullPath = path.join(diagPages, file);
+        const parts = file.split('_');
+        const timelineId = parts[0];
+
+        if (activeTimelines[runner.id] && activeTimelines[runner.id] !== timelineId && fs.existsSync(jobLogPath)) {
+          try {
+            const stat = fs.statSync(jobLogPath);
+            if (stat.size > 0) {
+              const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+              fs.copyFileSync(jobLogPath, path.join(workflowsDir, `workflow_${stamp}_${activeTimelines[runner.id]}.log`));
+              fs.writeFileSync(jobLogPath, '');
+            }
+          } catch (e) {}
+        }
+        activeTimelines[runner.id] = timelineId;
+
+        try {
+          const stat = fs.statSync(fullPath);
+          const currentOffset = trackedOffsets[fullPath] || 0;
+          if (stat.size > currentOffset) {
+            const fd = fs.openSync(fullPath, 'r');
+            const bytesToRead = stat.size - currentOffset;
+            const buffer = Buffer.alloc(bytesToRead);
+            fs.readSync(fd, buffer, 0, bytesToRead, currentOffset);
+            fs.closeSync(fd);
+
+            trackedOffsets[fullPath] = stat.size;
+            let text = buffer.toString('utf-8');
+            if (currentOffset === 0 && text.charCodeAt(0) === 0xFEFF) {
+              text = text.slice(1);
+            }
+            if (text.length > 0) {
+              fs.appendFileSync(jobLogPath, text);
+            }
+          }
+        } catch (e) {}
+      });
+    });
+
+    Object.keys(trackedOffsets).forEach(fp => {
+      if (!fs.existsSync(fp)) delete trackedOffsets[fp];
+    });
+  } catch (e) {}
+}
+
+// Starts the periodic background log harvester.
+function startHarvester() {
+  setInterval(harvestLogs, 1000);
+}
+
+// Reads the latest job execution log lines from disk.
+function readWorkflow(runnerDir) {
+  const jobLogPath = path.join(runnerDir, 'logs', 'job-logs.txt');
+  if (fs.existsSync(jobLogPath)) {
+    const raw = fs.readFileSync(jobLogPath, 'utf-8');
+    const lines = raw.split('\n').map(l => l.replace(/\r$/, '')).filter(l => l.length > 0);
+    if (lines.length > 0) return lines;
+  }
+  const workflowsDir = path.join(runnerDir, 'logs', 'workflows');
+  if (fs.existsSync(workflowsDir)) {
+    try {
+      const files = fs.readdirSync(workflowsDir).filter(f => f.endsWith('.log'));
+      if (files.length > 0) {
+        files.sort((a, b) => fs.statSync(path.join(workflowsDir, b)).mtimeMs - fs.statSync(path.join(workflowsDir, a)).mtimeMs);
+        const latest = path.join(workflowsDir, files[0]);
+        const raw = fs.readFileSync(latest, 'utf-8');
+        return raw.split('\n').map(l => l.replace(/\r$/, '')).filter(l => l.length > 0);
+      }
+    } catch (e) {}
+  }
+  return [];
+}
+
 
 function initSystemLogs() {
   if (!fs.existsSync(SYSTEM_LOG_PATH)) {
@@ -220,19 +325,40 @@ function collapseMultiLineLogs(rawContent) {
   return collapsed;
 }
 
+// Retrieves filtered logs for a runner from workflow execution log or runner daemon log.
 function getRunnerLogs(runnerId, options = {}) {
   const runnerService = require('./runnerService');
   const runner = runnerService.getRunnerById(runnerId);
 
-  // Look for active runner directory, or fallback to archived logs
   let runnerDir = runner ? (runner.dir || runner.runner_dir || runner.runnerDir || path.join(DEFAULT_RUNNER_DIR, runner.name || runnerId)) : null;
   if (!runnerDir || !fs.existsSync(runnerDir)) {
     const archivePath = path.join(process.env.DATA_DIR || '/app/data', 'archived-logs', runnerId);
     if (fs.existsSync(archivePath)) {
       runnerDir = archivePath;
     } else {
-      return { lines: ['Runner logs not found (runner may have been deleted without archive).'] };
+      return { lines: ['Runner logs not found (runner may have been deleted without archive).'], source: 'workflow', hasWorkflowLogs: false };
     }
+  }
+
+  const requestedSource = (options.source || '').toLowerCase();
+  const workflowLines = readWorkflow(runnerDir);
+  const serveWorkflow = requestedSource === 'workflow' || (!requestedSource && workflowLines.length > 0) || (requestedSource !== 'daemon' && workflowLines.length > 0);
+
+  if (serveWorkflow) {
+    let resultLines = workflowLines;
+    if (resultLines.length === 0) {
+      resultLines = ['[GitHub Actions] No workflow execution logs captured yet. Live step output (job-logs.txt) will stream here automatically when a job runs on this runner.'];
+    }
+    if (options.search) {
+      const query = options.search.toLowerCase();
+      resultLines = resultLines.filter(l => l.toLowerCase().includes(query));
+    }
+    const limit = options.limit ? parseInt(options.limit, 10) : 500;
+    return {
+      lines: resultLines.slice(-limit),
+      source: 'workflow',
+      hasWorkflowLogs: workflowLines.length > 0
+    };
   }
 
   const logFile = path.join(runnerDir, 'logs', 'runner.log');
@@ -243,7 +369,6 @@ function getRunnerLogs(runnerId, options = {}) {
     lines = collapseMultiLineLogs(raw);
   }
 
-  // Read GitHub runner diagnostic logs from actions-runner/_diag or archive/_diag
   let diagDir = path.join(runnerDir, 'actions-runner', '_diag');
   if (!fs.existsSync(diagDir) && fs.existsSync(path.join(runnerDir, '_diag'))) {
     diagDir = path.join(runnerDir, '_diag');
@@ -261,33 +386,9 @@ function getRunnerLogs(runnerId, options = {}) {
           const diagLines = collapseMultiLineLogs(diagRaw);
           lines = lines.concat(diagLines.slice(-100));
         }
-      } else {
-        // Extract meaningful step execution & process output from the latest Worker log
-        const latestWorker = files.find(f => f.startsWith('Worker_'));
-        if (latestWorker) {
-          try {
-            const workerRaw = fs.readFileSync(path.join(diagDir, latestWorker), 'utf-8');
-            const workerLines = workerRaw.split('\n');
-            const stepEvents = [];
-            for (const wl of workerLines) {
-              if (/Job ID|Starting the job|Initialize job|Total job steps|Run all job steps|Starting process:|Job result after|Publish step telemetry|Finished process \d+ with exit code/i.test(wl)) {
-                const clean = wl.replace(/\s+/g, ' ').trim();
-                if (clean) stepEvents.push(`[GitHub Actions] ${clean}`);
-              }
-            }
-            if (stepEvents.length > 0) {
-              lines = lines.concat(stepEvents.slice(-60));
-            }
-          } catch (e) {}
-        }
       }
     }
   }
-
-  // lastError injection removed — the error is visible on the runner card status badge.
-  // Injecting it here caused it to reappear after formatHumanSummary already suppressed it.
-
-
 
   if (options.search) {
     const query = options.search.toLowerCase();
@@ -299,7 +400,11 @@ function getRunnerLogs(runnerId, options = {}) {
   }
 
   const limit = options.limit ? parseInt(options.limit, 10) : 300;
-  return { lines: lines.slice(-limit) };
+  return {
+    lines: lines.slice(-limit),
+    source: 'daemon',
+    hasWorkflowLogs: workflowLines.length > 0
+  };
 }
 
 let hasDockerCli = null;
@@ -497,6 +602,10 @@ function clearRunnerLogs(runnerId) {
     if (fs.existsSync(logFile)) {
       fs.writeFileSync(logFile, '');
     }
+    const jobLog = path.join(runnerDir, 'logs', 'job-logs.txt');
+    if (fs.existsSync(jobLog)) {
+      fs.writeFileSync(jobLog, '');
+    }
     const diagDir = path.join(runnerDir, 'actions-runner', '_diag');
     if (fs.existsSync(diagDir)) {
       fs.readdirSync(diagDir).forEach(f => {
@@ -523,5 +632,6 @@ module.exports = {
   getRunnerLogs,
   getGlobalLogs,
   clearGlobalLogs,
-  clearRunnerLogs
+  clearRunnerLogs,
+  startHarvester
 };

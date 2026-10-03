@@ -218,19 +218,23 @@ app.get('/api/logs/global/download', (req, res) => {
 app.get('/api/runners/:id/logs', (req, res) => {
   const search = req.query.search || '';
   const level = req.query.level || '';
-  const limit = req.query.limit || 200;
-  const result = logService.getRunnerLogs(req.params.id, { search, level, limit });
+  const limit = req.query.limit || 500;
+  const source = req.query.source || '';
+  const result = logService.getRunnerLogs(req.params.id, { search, level, limit, source });
   res.json(result);
 });
 
 app.get('/api/runners/:id/logs/download', (req, res) => {
   const runner = runnerService.getRunnerById(req.params.id);
   const runnerName = runner ? (runner.name || req.params.id) : req.params.id;
-  const result = logService.getRunnerLogs(req.params.id, { limit: 10000 });
-  const header = `=============================================================\r\nGitHub Actions Runner: ${runnerName}\r\nExported: ${new Date().toISOString()}\r\n=============================================================\r\n\r\n`;
+  const source = req.query.source || '';
+  const result = logService.getRunnerLogs(req.params.id, { limit: 10000, source });
+  const isWorkflow = result.source === 'workflow';
+  const filename = isWorkflow ? `${runnerName}_job-logs.txt` : `${runnerName}_daemon.log`;
+  const header = `=============================================================\r\nGitHub Actions Runner: ${runnerName} (${isWorkflow ? 'Workflow job-logs.txt' : 'Daemon'})\r\nExported: ${new Date().toISOString()}\r\n=============================================================\r\n\r\n`;
   const text = header + (result.lines || []).join('\r\n');
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="${runnerName}_logs.txt"`);
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   res.send(text);
 });
 
@@ -246,8 +250,9 @@ app.get('/api/runners/:id/logs/stream', (req, res) => {
   res.setHeader('Connection', 'keep-alive');
 
   const runnerId = req.params.id;
+  const source = req.query.source || '';
   const interval = setInterval(() => {
-    const logs = logService.getRunnerLogs(runnerId, { limit: 50 });
+    const logs = logService.getRunnerLogs(runnerId, { limit: 100, source });
     res.write(`data: ${JSON.stringify(logs)}\n\n`);
   }, 2000);
 
@@ -328,7 +333,7 @@ app.get('/api/runners/:id/workflows', (req, res) => {
 
 app.get('/api/workflows', (req, res) => {
   const runners = runnerService.getAllRunners();
-  const all = runners.flatMap(r => parseWorkflowHistory(r.id).map(j => ({ ...j, runner: r.name })));
+  const all = runners.flatMap(r => parseWorkflowHistory(r.id).map(j => ({ ...j, runner: r.name, runnerId: r.id })));
   all.sort((a, b) => (b.startTime || '').localeCompare(a.startTime || ''));
   res.json(all.slice(0, 100));
 });
@@ -459,4 +464,5 @@ app.listen(PORT, '0.0.0.0', () => {
   const savedSettings = db.getSettings();
   watchdogService.updateSettings(savedSettings);
   webhookService.updateSettings(savedSettings);
+  logService.startHarvester();
 });

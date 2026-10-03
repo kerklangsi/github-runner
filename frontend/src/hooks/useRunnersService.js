@@ -8,6 +8,7 @@ export function useRunnersService(triggerToast, showConfirm, logLevelRef) {
   const [selectedRunner, setSelectedRunner] = useState(null);
   const [runnerLogs, setRunnerLogs] = useState([]);
   const [logSearch, setLogSearch] = useState('');
+  const [logSource, setLogSource] = useState('workflow');
 
   // Token Visibility & Editing Locks
   const [showAddToken, setShowAddToken] = useState(false);
@@ -212,11 +213,25 @@ export function useRunnersService(triggerToast, showConfirm, logLevelRef) {
     );
   }
 
-  function openLogs(runner) {
+  function openLogs(runner, source = 'workflow') {
     setSelectedRunner(runner);
     setIsLogModalOpen(true);
+    setLogSource(source);
     const lvl = logLevelRef.current || 'INFO';
-    fetch(`/api/runners/${runner.id}/logs?limit=200&level=${lvl}`)
+    fetch(`/api/runners/${runner.id}/logs?limit=500&level=${lvl}&source=${source}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.lines) setRunnerLogs(data.lines);
+        if (data.source) setLogSource(data.source);
+      });
+  }
+
+  // Switch log stream source between workflow and daemon
+  function switchSource(source) {
+    setLogSource(source);
+    if (!selectedRunner) return;
+    const lvl = logLevelRef.current || 'INFO';
+    fetch(`/api/runners/${selectedRunner.id}/logs?limit=500&level=${lvl}&source=${source}`)
       .then(res => res.json())
       .then(data => {
         if (data.lines) setRunnerLogs(data.lines);
@@ -241,8 +256,8 @@ export function useRunnersService(triggerToast, showConfirm, logLevelRef) {
     selectedRunner, setSelectedRunner, runnerLogs, setRunnerLogs, logSearch, setLogSearch, showAddToken, setShowAddToken,
     showRunnerTokens, setShowRunnerTokens, unlockedRunnerTokens, setUnlockedRunnerTokens, addForm, setAddForm,
     runnerEdits, setRunnerEdits, deleteConfirmModal, setDeleteConfirmModal, editModeRunners, setEditModeRunners,
-    logConsoleRef, selectedRunnerRef, isLogModalOpenRef, handleConfigFileUpload, handleAddRunner, handleStart,
-    handleStop, handleRestart, handleDelete, handleUpdateRunnerInlineConfig, handleExportRunnerConfig,
-    handleClearRunnerLogs, openLogs, openAddModal, openDeleteConfirmModal
+    logConsoleRef, selectedRunnerRef, isLogModalOpenRef, logSource, setLogSource, switchSource, handleLogSourceChange: switchSource,
+    handleConfigFileUpload, handleAddRunner, handleStart, handleStop, handleRestart, handleDelete,
+    handleUpdateRunnerInlineConfig, handleExportRunnerConfig, handleClearRunnerLogs, openLogs, openAddModal, openDeleteConfirmModal
   };
 }

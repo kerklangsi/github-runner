@@ -160,6 +160,8 @@ export default function App() {
               workflowLoading={s.workflowLoading}
               fetchWorkflows={s.fetchWorkflows}
               settings={s.settings}
+              runners={s.runners}
+              openLogs={s.openLogs}
             />
           )}
 
@@ -266,6 +268,9 @@ export default function App() {
         runnerLogs={s.runnerLogs}
         handleCopyLogs={copyLogs}
         handleSaveLogFile={saveLogFile}
+        logSource={s.logSource}
+        switchSource={s.switchSource}
+        handleLogSourceChange={s.handleLogSourceChange}
       />
 
       {/* Toast Notification */}
