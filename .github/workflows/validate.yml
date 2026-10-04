@@ -1,0 +1,44 @@
+name: Validate & Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Validate Backend Syntax
+        run: |
+          node --check backend/src/server.js
+          node --check backend/src/services/runnerService.js
+          node --check backend/src/services/logService.js
+          node --check backend/src/services/fileService.js
+          node --check backend/src/services/versionService.js
+
+      - name: Install & Build Frontend Bundle
+        run: |
+          cd frontend
+          npm install
+          npm run build
+
+      - name: Validate Release Scripts
+        run: |
+          python scripts/release_tag.py --dry-run
+          python scripts/release_notes.py --tag v3.2.0
