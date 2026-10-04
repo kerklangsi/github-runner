@@ -12,6 +12,7 @@ A modern, full-stack Web GUI and Docker container manager for GitHub Actions sel
 
 - **🌐 Modern Web Dashboard**: React + Express UI running on port 3000 for managing all runner instances in real-time.
 - **⚡ Rapid Runner Provisioning**: Provision repository or organization runners using Personal Access Tokens (PAT) or one-time registration tokens.
+- **🛑 Automatic Workflow Run Cancellation**: Gracefully sends `SIGINT` signals to the runner listener on Stop/Restart to inform GitHub Actions of cancellation, and dispatches cancellation requests via GitHub REST API on Start/Restart.
 - **📜 Live Workflow Execution Logging (`job-logs.txt`)**: Real-time harvester captures verbatim Azure blob step output from `_diag/pages` before runner purging, complete with microsecond timestamps, ANSI colors, and `##[group]` markers.
 - **🔄 Dual Log Inspection**: Toggle instantly between Live Workflow Step Output (`job-logs.txt`) and Runner Daemon Lifecycle logs (`runner.log`) with search and one-click file download.
 - **📦 Unified Persistent Tool Cache**: Automatically caches toolchains (Node.js, Python via `setup-python`/`setup-node`) and packages (pip wheels, Playwright browsers, npm) into a single persistent cache volume (`/home/runner/.cache` ➔ `/opt/hostedtoolcache`), eliminating duplicate downloads across workflows.

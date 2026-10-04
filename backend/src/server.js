@@ -189,6 +189,15 @@ app.post('/api/runners/:id/restart', (req, res) => {
   res.json(result);
 });
 
+app.post('/api/runners/:id/cancel', (req, res) => {
+  const runner = runnerService.getRunnerById(req.params.id);
+  if (!runner) {
+    return res.status(404).json({ error: 'Runner not found' });
+  }
+  const result = runnerService.cancelRun(runner);
+  res.json({ success: true, ...result });
+});
+
 // 5. Remove runner
 app.delete('/api/runners/:id', (req, res) => {
   const removeWorkDir = req.query.removeWorkDir === 'true';

@@ -336,6 +336,48 @@ function ensureSharedRepoLink(runner) {
   } catch (e) {}
 }
 
+// Cancels active GitHub Actions workflow runs for target repository via GitHub API.
+function cancelRun(runner) {
+  if (!runner || !runner.githubUrl) return { canceled: 0 };
+  const repoInfo = extractRepoInfo(runner.githubUrl);
+  if (!repoInfo.org || !repoInfo.repo) return { canceled: 0 };
+
+  const settings = db.getSettings();
+  const pat = (runner.registrationToken && (runner.registrationToken.startsWith('ghp_') || runner.registrationToken.startsWith('github_pat_')) ? runner.registrationToken : null)
+    || (settings.accessToken && settings.accessToken.trim())
+    || process.env.GITHUB_PAT || process.env.PAT || process.env.GITHUB_TOKEN || null;
+
+  if (!pat) {
+    return { canceled: 0, reason: 'no_pat' };
+  }
+
+  try {
+    const authHeader = (pat.startsWith('github_pat_') || pat.startsWith('ghp_')) ? `Bearer ${pat}` : `token ${pat}`;
+    const listUrl = `https://api.github.com/repos/${repoInfo.org}/${repoInfo.repo}/actions/runs?status=in_progress`;
+    const listCmd = `curl -s -H "Authorization: ${authHeader}" -H "User-Agent: GitHubRunnerManager/3.0" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "${listUrl}"`;
+    const res = execSync(listCmd, { encoding: 'utf-8', timeout: 8000 });
+    const parsed = JSON.parse(res || '{}');
+    const runs = parsed.workflow_runs || [];
+
+    let count = 0;
+    for (const run of runs) {
+      logService.addSystemLog('INFO', `Cancelling active GitHub workflow run #${run.id} ('${run.name || 'workflow'}') on ${repoInfo.fullKey}...`);
+      const cancelUrl = `https://api.github.com/repos/${repoInfo.org}/${repoInfo.repo}/actions/runs/${run.id}/cancel`;
+      const cancelCmd = `curl -s -X POST -H "Authorization: ${authHeader}" -H "User-Agent: GitHubRunnerManager/3.0" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "${cancelUrl}"`;
+      execSync(cancelCmd, { encoding: 'utf-8', timeout: 8000 });
+      count++;
+    }
+
+    if (count > 0) {
+      logService.addSystemLog('INFO', `Sent cancellation request for ${count} active workflow run(s) on ${repoInfo.fullKey}.`);
+    }
+    return { canceled: count };
+  } catch (err) {
+    logService.addSystemLog('WARN', `Failed to cancel active workflow runs on ${repoInfo.fullKey}: ${err.message}`);
+    return { canceled: 0, error: err.message };
+  }
+}
+
 // Spawns runner daemon process and logs output to disk.
 function startRunner(id) {
   const runners = db.getRunners();
@@ -346,6 +388,9 @@ function startRunner(id) {
   const runnerDir = getRunnerDir(runner);
   const actionsRunnerDir = path.join(runnerDir, 'actions-runner');
   const runnerConfigFile = path.join(actionsRunnerDir, '.runner');
+
+  // Cancel any lingering active workflow runs on GitHub before starting fresh session
+  cancelRun(runner);
 
   // Check if runner process is already running to prevent duplicate sessions
   if (runner.pid) {
@@ -425,6 +470,26 @@ function stopRunner(id) {
   const runner = runners[runnerIndex];
   const runnerDir = getRunnerDir(runner);
   const actionsRunnerDir = path.join(runnerDir, 'actions-runner');
+
+  // Cancel any active GitHub workflow runs via GitHub API (if PAT is available)
+  cancelRun(runner);
+
+  // Send graceful SIGINT (kill -2) so Runner.Listener notifies GitHub of run cancellation
+  if (runner.pid) {
+    try {
+      execSync(`kill -2 -${runner.pid} 2>/dev/null || kill -2 ${runner.pid} 2>/dev/null || true`);
+      logService.addSystemLog('INFO', `Sent graceful cancel signal (SIGINT) to runner container '${runner.name}' (PID: ${runner.pid}).`);
+    } catch (e) {}
+
+    // Allow Runner.Listener up to 2 seconds to report job cancellation to GitHub and exit
+    try {
+      for (let i = 0; i < 4; i++) {
+        execSync('sleep 0.5');
+        const pgrep = execSync(`pgrep -f "${actionsRunnerDir}/bin/[R]unner" 2>/dev/null || true`, { encoding: 'utf-8' });
+        if (!pgrep || !pgrep.trim()) break;
+      }
+    } catch (e) {}
+  }
 
   if (runner.pid) {
     try {
@@ -591,5 +656,6 @@ module.exports = {
   restartRunner,
   removeRunner,
   startAllRunners,
-  stopAllRunners
+  stopAllRunners,
+  cancelRun
 };
