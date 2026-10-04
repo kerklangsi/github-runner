@@ -31,33 +31,27 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Sync and Extract Semantic Version
+      - name: Resolve Release Version
         id: version
         run: |
-          TARGET_TAG="${{ inputs.tag }}"
-          python scripts/sync_version.py "$TARGET_TAG"
-          PKG_VERSION=$(jq -r .version backend/package.json)
-          TAG="v${PKG_VERSION}"
-          echo "Detected package version: ${PKG_VERSION} -> Tag: ${TAG}"
-          echo "pkg_version=${PKG_VERSION}" >> $GITHUB_OUTPUT
-          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          python scripts/release_tag.py "${{ inputs.tag }}" --ci >> $GITHUB_OUTPUT
+          echo "title=${{ inputs.title || '' }}" >> $GITHUB_OUTPUT
 
-          git fetch --tags || true
-          if git rev-parse "${TAG}" >/dev/null 2>&1; then
-            echo "Tag ${TAG} already exists on remote."
-            echo "is_new_tag=false" >> $GITHUB_OUTPUT
-          else
-            echo "Tag ${TAG} is new."
-            echo "is_new_tag=true" >> $GITHUB_OUTPUT
-            if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-              git config user.name "github-actions[bot]"
-              git config user.email "github-actions[bot]@users.noreply.github.com"
-              git add backend/package.json frontend/package.json backend/src/services/versionService.js docker-compose.yml README.md
-              git diff --staged --quiet || git commit -m "chore(release): sync version to ${TAG} [skip ci]"
-              git tag -a "${TAG}" -m "Release ${TAG}"
-              git push origin main "${TAG}" || true
-            fi
-          fi
+      - name: Commit Version Bump
+        if: steps.version.outputs.bumped == 'true' && github.ref == 'refs/heads/main'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add backend/package.json frontend/package.json backend/src/services/versionService.js docker-compose.yml README.md
+          git commit -m "chore(release): bump version to ${{ steps.version.outputs.tag }} [skip ci]" || true
+          git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}"
+          git push origin main "${{ steps.version.outputs.tag }}" || true
+
+      - name: Update latest tag pointer
+        if: github.ref == 'refs/heads/main'
+        run: |
+          git tag -f latest ${{ github.sha }}
+          git push -f origin latest || true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -77,7 +71,7 @@ jobs:
           tags: |
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
             type=raw,value=${{ steps.version.outputs.tag }},enable=${{ steps.version.outputs.tag != '' }}
-            type=raw,value=${{ inputs.tag }},enable=${{ inputs.tag != '' }}
+            type=raw,value=${{ steps.version.outputs.pkg_version }},enable=${{ steps.version.outputs.pkg_version != '' }}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
@@ -102,15 +96,16 @@ jobs:
 
       - name: Generate Dynamic Release Notes
         run: |
-          python scripts/release_notes.py --tag "${{ inputs.tag || steps.version.outputs.tag || github.ref_name }}" --desc "${{ inputs.description || '' }}" --out dist/release_notes.md
+          python scripts/release_notes.py --tag "${{ steps.version.outputs.tag }}" --desc "${{ inputs.description || '' }}" --out dist/release_notes.md
 
       - name: Create or Update GitHub Release
-        if: steps.version.outputs.is_new_tag == 'true' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
+        if: steps.version.outputs.bumped == 'true' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ inputs.tag || steps.version.outputs.tag || github.ref_name }}
-          name: ${{ inputs.title || format('GitHub Runner Manager {0}', inputs.tag || steps.version.outputs.tag || github.ref_name) }}
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.title || format('GitHub Runner Manager {0}', steps.version.outputs.tag) }}
           body_path: dist/release_notes.md
+          make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
