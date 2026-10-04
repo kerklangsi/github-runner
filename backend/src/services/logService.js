@@ -110,6 +110,20 @@ function harvestLogs() {
               text = text.slice(1);
             }
             if (text.length > 0) {
+              if (fs.existsSync(jobLogPath)) {
+                try {
+                  const existingStat = fs.statSync(jobLogPath);
+                  if (existingStat.size > 0) {
+                    const tailBuf = Buffer.alloc(1);
+                    const logFd = fs.openSync(jobLogPath, 'r');
+                    fs.readSync(logFd, tailBuf, 0, 1, existingStat.size - 1);
+                    fs.closeSync(logFd);
+                    if (tailBuf[0] !== 0x0A) {
+                      fs.appendFileSync(jobLogPath, '\n');
+                    }
+                  }
+                } catch (e) {}
+              }
               fs.appendFileSync(jobLogPath, text);
             }
           }
@@ -119,6 +133,34 @@ function harvestLogs() {
 
     Object.keys(trackedOffsets).forEach(fp => {
       if (!fs.existsSync(fp)) delete trackedOffsets[fp];
+    });
+  } catch (e) {}
+}
+
+// Pre-populates tracked offsets on startup to prevent re-reading existing page chunks.
+function initOffsets() {
+  try {
+    const runnerService = require('./runnerService');
+    const runners = runnerService.getAllRunners();
+    runners.forEach(runner => {
+      const runnerDir = runner.dir || runner.runner_dir || runner.runnerDir || path.join(DEFAULT_RUNNER_DIR, runner.name || runner.id);
+      const diagPages = path.join(runnerDir, 'actions-runner', '_diag', 'pages');
+      if (!fs.existsSync(diagPages)) return;
+
+      let pageFiles;
+      try {
+        pageFiles = fs.readdirSync(diagPages).filter(f => f.endsWith('.log'));
+      } catch (e) { return; }
+
+      pageFiles.forEach(file => {
+        const fullPath = path.join(diagPages, file);
+        try {
+          const stat = fs.statSync(fullPath);
+          trackedOffsets[fullPath] = stat.size;
+          const parts = file.split('_');
+          activeTimelines[runner.id] = parts[0];
+        } catch (e) {}
+      });
     });
   } catch (e) {}
 }
@@ -138,12 +180,24 @@ let harvesterTimer = null;
 
 // Starts the adaptive background log harvester triggered on busy mode.
 function startHarvester() {
+  initOffsets();
   if (harvesterTimer) clearInterval(harvesterTimer);
   harvesterTimer = setInterval(() => {
     if (checkBusy()) {
       harvestLogs();
     }
   }, 1000);
+}
+
+// Suppresses consecutive duplicate lines from log arrays.
+function dedupeLines(lines) {
+  const clean = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (i === 0 || lines[i] !== lines[i - 1]) {
+      clean.push(lines[i]);
+    }
+  }
+  return clean;
 }
 
 // Filters out standard setup and cleanup steps from workflow logs.
@@ -194,7 +248,7 @@ function readWorkflow(runnerDir) {
   if (fs.existsSync(jobLogPath)) {
     const raw = fs.readFileSync(jobLogPath, 'utf-8');
     const lines = raw.split('\n').map(l => l.replace(/\r$/, '')).filter(l => l.length > 0);
-    if (lines.length > 0) return lines;
+    if (lines.length > 0) return dedupeLines(lines);
   }
   const workflowsDir = path.join(runnerDir, 'logs', 'workflows');
   if (fs.existsSync(workflowsDir)) {
@@ -204,7 +258,7 @@ function readWorkflow(runnerDir) {
         files.sort((a, b) => fs.statSync(path.join(workflowsDir, b)).mtimeMs - fs.statSync(path.join(workflowsDir, a)).mtimeMs);
         const latest = path.join(workflowsDir, files[0]);
         const raw = fs.readFileSync(latest, 'utf-8');
-        return raw.split('\n').map(l => l.replace(/\r$/, '')).filter(l => l.length > 0);
+        return dedupeLines(raw.split('\n').map(l => l.replace(/\r$/, '')).filter(l => l.length > 0));
       }
     } catch (e) {}
   }
