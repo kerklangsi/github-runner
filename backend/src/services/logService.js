@@ -310,6 +310,7 @@ function readWorkflow(runnerDir) {
     const raw = fs.readFileSync(jobLogPath, 'utf-8');
     const lines = raw.split('\n').map(l => l.replace(/\r$/, '')).filter(l => l.length > 0);
     if (lines.length > 0) return dedupeLines(lines);
+    return [];
   }
   const workflowsDir = path.join(runnerDir, 'logs', 'workflows');
   if (fs.existsSync(workflowsDir)) {
@@ -522,11 +523,8 @@ function getRunnerLogs(runnerId, options = {}) {
 
   if (serveWorkflow) {
     let resultLines = rawWorkflowLines;
-    if (resultLines.length === 0) {
-      resultLines = ['[GitHub Actions] No workflow execution logs captured yet. Live step output (job-logs.txt) will stream here automatically when a job runs on this runner.'];
-    } else if (options.raw !== 'true' && options.raw !== true) {
-      const filtered = filterSteps(resultLines);
-      resultLines = filtered.length > 0 ? filtered : ['[GitHub Actions] Standard setup and cleanup steps (Set up job, Checkout repository, Set up Python, Install dependencies, Complete job) were filtered out. Custom script output will stream here.'];
+    if (resultLines.length > 0 && options.raw !== 'true' && options.raw !== true) {
+      resultLines = filterSteps(resultLines);
     }
     if (options.search) {
       const query = options.search.toLowerCase();
@@ -729,6 +727,7 @@ function getGlobalLogs(options = {}) {
   return { lines: cleanLines.slice(-limit) };
 }
 
+// Permanently clears global system logs, docker logs, and all runner logs.
 function clearGlobalLogs() {
   const dir = path.dirname(SYSTEM_LOG_PATH);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -737,25 +736,42 @@ function clearGlobalLogs() {
     fs.writeFileSync(DOCKER_LOG_PATH, '');
   }
 
-  // Clear all runner log files and diagnostic files
+  // Clear all runner log files, workflow archives, and diagnostic files
   try {
     const runnerService = require('./runnerService');
     const runners = runnerService.getAllRunners();
     runners.forEach(r => {
       const rDir = r.dir || r.runner_dir || r.runnerDir || path.join(DEFAULT_RUNNER_DIR, r.name || r.id);
-      const lFile = path.join(rDir, 'logs', 'runner.log');
-      if (fs.existsSync(lFile)) fs.writeFileSync(lFile, '');
-      const diagDir = path.join(rDir, 'actions-runner', '_diag');
-      if (fs.existsSync(diagDir)) {
-        fs.readdirSync(diagDir).forEach(f => {
-          try { fs.unlinkSync(path.join(diagDir, f)); } catch (e) { }
-        });
+      if (fs.existsSync(rDir)) {
+        const lFile = path.join(rDir, 'logs', 'runner.log');
+        if (fs.existsSync(lFile)) fs.writeFileSync(lFile, '');
+        const jFile = path.join(rDir, 'logs', 'job-logs.txt');
+        if (fs.existsSync(jFile)) fs.writeFileSync(jFile, '');
+        const wfDir = path.join(rDir, 'logs', 'workflows');
+        if (fs.existsSync(wfDir)) {
+          try {
+            fs.readdirSync(wfDir).forEach(f => {
+              try { fs.unlinkSync(path.join(wfDir, f)); } catch (e) {}
+            });
+          } catch (e) {}
+        }
+        const diagDir = path.join(rDir, 'actions-runner', '_diag');
+        if (fs.existsSync(diagDir)) {
+          try {
+            fs.readdirSync(diagDir).forEach(f => {
+              try { fs.rmSync(path.join(diagDir, f), { recursive: true, force: true }); } catch (e) {}
+            });
+          } catch (e) {}
+        }
       }
       delete r.lastError;
     });
     const db = require('../db/database');
     db.saveRunners(runners);
-  } catch (e) { }
+  } catch (e) {}
+
+  for (const k in trackedOffsets) delete trackedOffsets[k];
+  for (const k in activeTimelines) delete activeTimelines[k];
 
   // Remove archived logs from deleted runners
   const archiveDir = path.join(process.env.DATA_DIR || '/app/data', 'archived-logs');
@@ -766,12 +782,13 @@ function clearGlobalLogs() {
         const full = path.join(archiveDir, item);
         try {
           fs.rmSync(full, { recursive: true, force: true });
-        } catch (e) { }
+        } catch (e) {}
       });
-    } catch (e) { }
+    } catch (e) {}
   }
 }
 
+// Permanently clears logs, workflow files, and diagnostic chunks for a specific runner.
 function clearRunnerLogs(runnerId) {
   const runnerService = require('./runnerService');
   const runner = runnerService.getRunnerById(runnerId);
@@ -779,19 +796,31 @@ function clearRunnerLogs(runnerId) {
 
   if (runnerDir && fs.existsSync(runnerDir)) {
     const logFile = path.join(runnerDir, 'logs', 'runner.log');
-    if (fs.existsSync(logFile)) {
-      fs.writeFileSync(logFile, '');
-    }
+    if (fs.existsSync(logFile)) fs.writeFileSync(logFile, '');
     const jobLog = path.join(runnerDir, 'logs', 'job-logs.txt');
-    if (fs.existsSync(jobLog)) {
-      fs.writeFileSync(jobLog, '');
+    if (fs.existsSync(jobLog)) fs.writeFileSync(jobLog, '');
+    const wfDir = path.join(runnerDir, 'logs', 'workflows');
+    if (fs.existsSync(wfDir)) {
+      try {
+        fs.readdirSync(wfDir).forEach(f => {
+          try { fs.unlinkSync(path.join(wfDir, f)); } catch (e) {}
+        });
+      } catch (e) {}
     }
     const diagDir = path.join(runnerDir, 'actions-runner', '_diag');
     if (fs.existsSync(diagDir)) {
-      fs.readdirSync(diagDir).forEach(f => {
-        try { fs.unlinkSync(path.join(diagDir, f)); } catch (e) { }
-      });
+      try {
+        fs.readdirSync(diagDir).forEach(f => {
+          try { fs.rmSync(path.join(diagDir, f), { recursive: true, force: true }); } catch (e) {}
+        });
+      } catch (e) {}
     }
+
+    Object.keys(trackedOffsets).forEach(fp => {
+      if (fp.startsWith(runnerDir)) delete trackedOffsets[fp];
+    });
+    delete activeTimelines[runnerId];
+    if (runner) delete activeTimelines[runner.id];
   }
 
   // Clear lastError from runner record so it does not reinject into live logs
