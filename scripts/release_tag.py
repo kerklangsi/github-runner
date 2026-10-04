@@ -39,6 +39,15 @@ def release_tag(repo_root, override=None, dry_run=False):
         return f"v{ver}", bool(updated), ver
 
     try:
+        tag_proc = subprocess.run(
+            ['git', 'rev-parse', '-q', '--verify', f'refs/tags/v{cur_ver}'],
+            cwd=repo_root, capture_output=True
+        )
+        tag_exists = (tag_proc.returncode == 0)
+    except Exception:
+        tag_exists = False
+
+    try:
         last_msg = subprocess.check_output(
             ['git', 'log', '-1', '--pretty=%B'],
             cwd=repo_root
@@ -48,6 +57,12 @@ def release_tag(repo_root, override=None, dry_run=False):
 
     if 'chore(release):' in last_msg or '[skip ci]' in last_msg.lower():
         return f"v{cur_ver}", False, cur_ver
+
+    if not tag_exists and cur_ver not in ('0.0.0', '0.1.0', ''):
+        if not dry_run:
+            _, updated = sync_files(cur_ver, Path(repo_root))
+            print(f"[VERSION] Untagged manifest version detected: {cur_ver}", file=sys.stderr)
+        return f"v{cur_ver}", True, cur_ver
 
     bump_type = 'major' if '[major]' in last_msg.lower() else ('minor' if '[minor]' in last_msg.lower() else 'patch')
     new_ver = bump_version(cur_ver, bump_type)
