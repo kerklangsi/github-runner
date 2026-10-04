@@ -55,14 +55,15 @@ def release_tag(repo_root, override=None, dry_run=False):
     except Exception:
         last_msg = ''
 
-    if 'chore(release):' in last_msg or '[skip ci]' in last_msg.lower():
-        return f"v{cur_ver}", False, cur_ver
-
+    # If the tag does not exist yet in git, this is a new release version
     if not tag_exists and cur_ver not in ('0.0.0', '0.1.0', ''):
         if not dry_run:
             _, updated = sync_files(cur_ver, Path(repo_root))
             print(f"[VERSION] Untagged manifest version detected: {cur_ver}", file=sys.stderr)
         return f"v{cur_ver}", True, cur_ver
+
+    if 'chore(release):' in last_msg or '[skip ci]' in last_msg.lower():
+        return f"v{cur_ver}", False, cur_ver
 
     bump_type = 'major' if '[major]' in last_msg.lower() else ('minor' if '[minor]' in last_msg.lower() else 'patch')
     new_ver = bump_version(cur_ver, bump_type)
