@@ -189,12 +189,15 @@ function startHarvester() {
   }, 1000);
 }
 
-// Suppresses consecutive duplicate lines from log arrays.
+// Suppresses consecutive duplicate lines comparing message body after timestamp.
 function dedupeLines(lines) {
   const clean = [];
-  for (let i = 0; i < lines.length; i++) {
-    if (i === 0 || lines[i] !== lines[i - 1]) {
-      clean.push(lines[i]);
+  let prevBody = null;
+  for (const line of lines) {
+    const body = line.replace(/^(?:\[[^\]]+\]\s*)?(?:\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?\s*)*/, '').trim();
+    if (body && body !== prevBody) {
+      clean.push(line);
+      prevBody = body;
     }
   }
   return clean;
@@ -202,25 +205,82 @@ function dedupeLines(lines) {
 
 // Filters out standard setup and cleanup steps from workflow logs.
 function filterSteps(lines) {
-  const IGNORED_STEP_PATTERNS = [
+  const IGNORED_GROUPS = [
     /set\s*up\s*job/i,
-    /checkout(\s*repository)?/i,
-    /actions\/checkout/i,
-    /set\s*up\s*python/i,
-    /actions\/setup-python/i,
+    /(actions\/)?checkout(@v\d+)?/i,
+    /fetching\s*the\s*repository/i,
+    /checking\s*out\s*the\s*ref/i,
+    /getting\s*git\s*version/i,
+    /removing\s*previously\s*created\s*refs/i,
+    /disabling\s*automatic\s*garbage/i,
+    /setting\s*up\s*auth/i,
+    /(actions\/)?setup[\s-]*python(@v\d+)?/i,
+    /installed\s*versions/i,
     /install\s*dependencies/i,
-    /post\s*set\s*up\s*python/i,
-    /post\s*checkout/i,
-    /complete\s*job/i
+    /pip\s*install/i,
+    /post\s*set[\s-]*up[\s-]*python/i,
+    /post\s*(actions\/)?checkout/i,
+    /complete\s*job/i,
+    /github_token\s*permissions/i
+  ];
+
+  const IGNORED_STANDALONE = [
+    /current\s*runner\s*version/i,
+    /runner\s*name\s*:/i,
+    /runner\s*group\s*name\s*:/i,
+    /machine\s*name\s*:/i,
+    /prepare\s*(workflow|all\s*required)/i,
+    /getting\s*action\s*download/i,
+    /download\s*action\s*repository/i,
+    /complete\s*job\s*name\s*:/i,
+    /secret\s*source\s*:/i,
+    /cache\s*mode\s*:/i,
+    /syncing\s*repository\s*:/i,
+    /working\s*directory\s*is/i,
+    /copying\s*'.*\.gitconfig'/i,
+    /temporarily\s*overriding\s*HOME/i,
+    /adding\s*repository\s*directory/i,
+    /removing\s*(ssh\s*command|http\s*extra\s*header|includeif\s*entries)/i,
+    /\[command\]\/usr\/bin\/git\s+(version|config|rev-parse|checkout|submodule|sparse-checkout|log)/i,
+    /^refs\/heads\//i,
+    /^HEAD is now at/i,
+    /^https?:\/\/[^\s]+$/i,
+    /^[0-9a-f]{40}$/i,
+    /\/git-credentials-.*\.config/i,
+    /requirement\s*already\s*satisfied/i,
+    /installing\s*collected\s*packages/i,
+    /successfully\s*installed/i,
+    /shell:\s*\/usr\/bin\/bash/i,
+    /env:\s*$/i,
+    /^\s*(pythonLocation|PKG_CONFIG_PATH|Python\d?_ROOT_DIR|LD_LIBRARY_PATH|PYTHONUNBUFFERED):/i
   ];
 
   const result = [];
   let skipping = false;
+  let inPostCleanup = false;
 
-  for (const line of lines) {
+  for (let line of lines) {
+    line = line.replace(/^(?:\[[^\]]+\]\s*)?(?:\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?\s*)+/, (match) => {
+      const ts = match.match(/\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?/g);
+      return ts ? ts[ts.length - 1] + ' ' : '';
+    });
+    const body = line.replace(/^(?:\[[^\]]+\]\s*)?(?:\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?\s*)*/, '').trim();
+
+    if (body.includes('Post job cleanup')) {
+      inPostCleanup = true;
+      continue;
+    }
+    if (inPostCleanup) {
+      if (body.includes('Current runner version') || body.includes('Prepare workflow directory')) {
+        inPostCleanup = false;
+      } else {
+        continue;
+      }
+    }
+
     if (line.includes('##[group]')) {
       const stepTitle = line.split('##[group]')[1] || '';
-      const isIgnored = IGNORED_STEP_PATTERNS.some(p => p.test(stepTitle.trim()));
+      const isIgnored = IGNORED_GROUPS.some(p => p.test(stepTitle.trim()));
       if (isIgnored) {
         skipping = true;
         continue;
@@ -234,12 +294,13 @@ function filterSteps(lines) {
       }
     }
 
-    if (!skipping) {
-      result.push(line);
-    }
+    if (skipping) continue;
+    if (IGNORED_STANDALONE.some(p => p.test(body))) continue;
+
+    result.push(line);
   }
 
-  return result;
+  return dedupeLines(result);
 }
 
 // Reads the latest job execution log lines from disk.
@@ -663,8 +724,9 @@ function getGlobalLogs(options = {}) {
     return 0;
   });
 
+  const cleanLines = dedupeLines(allLines);
   const limit = options.limit ? parseInt(options.limit, 10) : 300;
-  return { lines: allLines.slice(-limit) };
+  return { lines: cleanLines.slice(-limit) };
 }
 
 function clearGlobalLogs() {
