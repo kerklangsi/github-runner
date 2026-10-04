@@ -48,12 +48,14 @@ function addSystemLog(level = 'INFO', message = '') {
 
 const trackedOffsets = {};
 const activeTimelines = {};
+let isHarvesting = false;
 
 // Harvests live step chunk pages from actions-runner into persistent job-logs.txt.
 function harvestLogs() {
+  if (isHarvesting) return;
+  isHarvesting = true;
   try {
-    const runnerService = require('./runnerService');
-    const runners = runnerService.getAllRunners();
+    const runners = db.getRunners();
     runners.forEach(runner => {
       const runnerDir = runner.dir || runner.runner_dir || runner.runnerDir || path.join(DEFAULT_RUNNER_DIR, runner.name || runner.id);
       const diagPages = path.join(runnerDir, 'actions-runner', '_diag', 'pages');
@@ -67,6 +69,13 @@ function harvestLogs() {
 
       pageFiles.sort((a, b) => {
         try {
+          const partsA = a.replace(/\.log$/, '').split('_');
+          const partsB = b.replace(/\.log$/, '').split('_');
+          if (partsA.length >= 3 && partsB.length >= 3 && partsA[1] === partsB[1]) {
+            const pageA = parseInt(partsA[2], 10);
+            const pageB = parseInt(partsB[2], 10);
+            if (!isNaN(pageA) && !isNaN(pageB)) return pageA - pageB;
+          }
           return fs.statSync(path.join(diagPages, a)).mtimeMs - fs.statSync(path.join(diagPages, b)).mtimeMs;
         } catch (e) { return 0; }
       });
@@ -110,20 +119,6 @@ function harvestLogs() {
               text = text.slice(1);
             }
             if (text.length > 0) {
-              if (fs.existsSync(jobLogPath)) {
-                try {
-                  const existingStat = fs.statSync(jobLogPath);
-                  if (existingStat.size > 0) {
-                    const tailBuf = Buffer.alloc(1);
-                    const logFd = fs.openSync(jobLogPath, 'r');
-                    fs.readSync(logFd, tailBuf, 0, 1, existingStat.size - 1);
-                    fs.closeSync(logFd);
-                    if (tailBuf[0] !== 0x0A) {
-                      fs.appendFileSync(jobLogPath, '\n');
-                    }
-                  }
-                } catch (e) {}
-              }
               fs.appendFileSync(jobLogPath, text);
             }
           }
@@ -134,14 +129,15 @@ function harvestLogs() {
     Object.keys(trackedOffsets).forEach(fp => {
       if (!fs.existsSync(fp)) delete trackedOffsets[fp];
     });
-  } catch (e) {}
+  } catch (e) {} finally {
+    isHarvesting = false;
+  }
 }
 
 // Pre-populates tracked offsets on startup to prevent re-reading existing page chunks.
 function initOffsets() {
   try {
-    const runnerService = require('./runnerService');
-    const runners = runnerService.getAllRunners();
+    const runners = db.getRunners();
     runners.forEach(runner => {
       const runnerDir = runner.dir || runner.runner_dir || runner.runnerDir || path.join(DEFAULT_RUNNER_DIR, runner.name || runner.id);
       const diagPages = path.join(runnerDir, 'actions-runner', '_diag', 'pages');
