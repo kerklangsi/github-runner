@@ -888,7 +888,7 @@ function getGlobalLogs(options = {}) {
   if (runners && runners.length > 0) {
     runners.forEach(runner => {
       const runnerIdDisplay = runner.name || runner.id.replace('runner-', '');
-      const res = getRunnerLogs(runner.id, { limit: 50, level: options.level });
+      const res = getRunnerLogs(runner.id, { limit: 50, level: options.level, source: 'daemon' });
       if (res.lines && res.lines.length > 0) {
         res.lines.forEach(l => {
           // Preserve any embedded timestamp: put [runnerName] after it so normalizeLogLine
@@ -911,7 +911,7 @@ function getGlobalLogs(options = {}) {
       const archivedNames = fs.readdirSync(archiveDir);
       archivedNames.forEach(name => {
         if (!runners || !runners.some(r => r.name === name || r.id === name)) {
-          const res = getRunnerLogs(name, { limit: 50, level: options.level });
+          const res = getRunnerLogs(name, { limit: 50, level: options.level, source: 'daemon' });
           if (res.lines && res.lines.length > 0) {
             res.lines.forEach(l => {
               const tsMatch = l.match(/^(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?[: ]*)(.*)/);
