@@ -437,6 +437,14 @@ function formatHumanSummary(line) {
     }
   }
 
+  // 3. Normalize .NET diagnostic log header [YYYY-MM-DD HH:MM:SSZ LEVEL Component] Message
+  const diagMatch = line.match(/^\[(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)\s+([A-Z]{3,5})\s+([^\]]+)\]\s*(.*)/s);
+  if (diagMatch) {
+    const [, ts, lvl, comp, rest] = diagMatch;
+    const cleanLvl = lvl === 'ERR' ? 'ERROR' : lvl;
+    return `${ts}: [${cleanLvl}] [${comp.trim()}] ${rest.trim()}`;
+  }
+
   return line;
 }
 

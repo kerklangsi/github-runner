@@ -131,6 +131,14 @@ export function normalizeLogLine(line, sourceHint = 'global', lastTs = '', showS
     }
   }
 
+  // Parse inner .NET diagnostic header [YYYY-MM-DD HH:MM:SSZ LEVEL Component] Message
+  const innerDiag = msg.match(/^\[(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)(?:\s+([A-Z]{3,5}))?(?:\s+([^\]]+))?\]\s*(.*)/s);
+  if (innerDiag) {
+    if (!timestamp) timestamp = innerDiag[1].replace('T', ' ').slice(0, 19);
+    if (innerDiag[2]) level = innerDiag[2] === 'ERR' ? 'ERROR' : innerDiag[2];
+    msg = innerDiag[3] ? `[${innerDiag[3].trim()}] ${innerDiag[4].trim()}` : innerDiag[4].trim();
+  }
+
   const ts = timestamp || lastTs;
   const lvlMatch = msg.match(/^\[([A-Z]{3,5})(?:\s+[^\]]*)?\]\s*(.*)/s);
   if (lvlMatch) {
