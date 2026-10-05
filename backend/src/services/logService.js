@@ -152,27 +152,35 @@ function harvestLogs() {
     const runners = db.getRunners();
     runners.forEach(runner => {
       const runnerDir = runner.dir || runner.runner_dir || runner.runnerDir || path.join(DEFAULT_RUNNER_DIR, runner.name || runner.id);
-      const diagPages = path.join(runnerDir, 'actions-runner', '_diag', 'pages');
-      if (!fs.existsSync(diagPages)) return;
+      const baseDiag = path.join(runnerDir, 'actions-runner', '_diag');
+      const fallbackDiag = path.join(runnerDir, '_diag');
+      const diagDir = fs.existsSync(baseDiag) ? baseDiag : fallbackDiag;
+      if (!fs.existsSync(diagDir)) return;
 
-      let pageFiles;
-      try {
-        pageFiles = fs.readdirSync(diagPages).filter(f => f.endsWith('.log'));
-      } catch (e) { return; }
-      if (!pageFiles || pageFiles.length === 0) return;
+      const sourceDirs = [
+        path.join(diagDir, 'blocks'),
+        path.join(diagDir, 'pages')
+      ].filter(d => fs.existsSync(d));
 
-      pageFiles.sort((a, b) => {
+      const filesToProcess = [];
+      sourceDirs.forEach(dir => {
         try {
-          const partsA = a.replace(/\.log$/, '').split('_');
-          const partsB = b.replace(/\.log$/, '').split('_');
-          if (partsA.length >= 3 && partsB.length >= 3 && partsA[1] === partsB[1]) {
-            const pageA = parseInt(partsA[2], 10);
-            const pageB = parseInt(partsB[2], 10);
-            if (!isNaN(pageA) && !isNaN(pageB)) return pageA - pageB;
-          }
-          return fs.statSync(path.join(diagPages, a)).mtimeMs - fs.statSync(path.join(diagPages, b)).mtimeMs;
-        } catch (e) { return 0; }
+          const entries = fs.readdirSync(dir).filter(f => !f.startsWith('.') && !f.endsWith('.tmp'));
+          entries.forEach(f => {
+            const fullPath = path.join(dir, f);
+            try {
+              const stat = fs.statSync(fullPath);
+              if (stat.isFile()) {
+                filesToProcess.push({ fullPath, file: f, mtime: stat.mtimeMs });
+              }
+            } catch (e) {}
+          });
+        } catch (e) {}
       });
+
+      if (filesToProcess.length === 0) return;
+
+      filesToProcess.sort((a, b) => a.mtime - b.mtime);
 
       const logsDir = path.join(runnerDir, 'logs');
       if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });
@@ -180,8 +188,7 @@ function harvestLogs() {
       const workflowsDir = path.join(logsDir, 'workflows');
       if (!fs.existsSync(workflowsDir)) fs.mkdirSync(workflowsDir, { recursive: true });
 
-      pageFiles.forEach(file => {
-        const fullPath = path.join(diagPages, file);
+      filesToProcess.forEach(({ fullPath, file }) => {
         const parts = file.split('_');
         const timelineId = parts[0];
 
@@ -234,33 +241,57 @@ function initOffsets() {
     const runners = db.getRunners();
     runners.forEach(runner => {
       const runnerDir = runner.dir || runner.runner_dir || runner.runnerDir || path.join(DEFAULT_RUNNER_DIR, runner.name || runner.id);
-      const diagPages = path.join(runnerDir, 'actions-runner', '_diag', 'pages');
-      if (!fs.existsSync(diagPages)) return;
+      const baseDiag = path.join(runnerDir, 'actions-runner', '_diag');
+      const fallbackDiag = path.join(runnerDir, '_diag');
+      const diagDir = fs.existsSync(baseDiag) ? baseDiag : fallbackDiag;
+      if (!fs.existsSync(diagDir)) return;
 
-      let pageFiles;
-      try {
-        pageFiles = fs.readdirSync(diagPages).filter(f => f.endsWith('.log'));
-      } catch (e) { return; }
+      const sourceDirs = [
+        path.join(diagDir, 'blocks'),
+        path.join(diagDir, 'pages')
+      ].filter(d => fs.existsSync(d));
 
-      pageFiles.forEach(file => {
-        const fullPath = path.join(diagPages, file);
+      sourceDirs.forEach(dir => {
         try {
-          const stat = fs.statSync(fullPath);
-          trackedOffsets[fullPath] = stat.size;
-          const parts = file.split('_');
-          activeTimelines[runner.id] = parts[0];
+          const entries = fs.readdirSync(dir).filter(f => !f.startsWith('.') && !f.endsWith('.tmp'));
+          entries.forEach(file => {
+            const fullPath = path.join(dir, file);
+            try {
+              const stat = fs.statSync(fullPath);
+              trackedOffsets[fullPath] = stat.size;
+              const parts = file.split('_');
+              activeTimelines[runner.id] = parts[0];
+            } catch (e) {}
+          });
         } catch (e) {}
       });
     });
   } catch (e) {}
 }
 
-// Checks whether any registered runner is currently executing a job.
+// Checks whether any registered runner is currently executing a job or has pending block files.
 function checkBusy() {
   try {
     const runnerService = require('./runnerService');
     const runners = runnerService.getAllRunners();
-    return runners.some(r => r.status === 'BUSY');
+    if (runners.some(r => r.status === 'BUSY')) return true;
+
+    const db = require('../db/database');
+    const allRunners = db.getRunners();
+    return allRunners.some(runner => {
+      const runnerDir = runner.dir || runner.runner_dir || runner.runnerDir || path.join(DEFAULT_RUNNER_DIR, runner.name || runner.id);
+      const dirs = [
+        path.join(runnerDir, 'actions-runner', '_diag', 'blocks'),
+        path.join(runnerDir, 'actions-runner', '_diag', 'pages')
+      ];
+      return dirs.some(d => {
+        try {
+          return fs.existsSync(d) && fs.readdirSync(d).some(f => !f.startsWith('.'));
+        } catch (e) {
+          return false;
+        }
+      });
+    });
   } catch (e) {
     return false;
   }
