@@ -111,14 +111,6 @@ export function normalizeLogLine(line, sourceHint = 'global', lastTs = '', showS
     }
   }
 
-  if (source === sourceHint) {
-    const runnerPfx = msg.match(/^\[([^\d\]][^\]]*)\]\s*(.*)/s);
-    if (runnerPfx && !/^\d{4}-\d{2}-\d{2}/.test(runnerPfx[1])) {
-      source = runnerPfx[1].trim();
-      msg = runnerPfx[2].trim();
-    }
-  }
-
   const tsBracketed = msg.match(/^\[(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)\]\s*(.*)/s);
   if (tsBracketed) {
     timestamp = tsBracketed[1].replace('T', ' ').slice(0, 19);
@@ -128,6 +120,14 @@ export function normalizeLogLine(line, sourceHint = 'global', lastTs = '', showS
     if (tsBare) {
       timestamp = tsBare[1].replace('T', ' ').slice(0, 19);
       msg = tsBare[2].trim();
+    }
+  }
+
+  if (source === sourceHint || source === 'global') {
+    const runnerPfx = msg.match(/^\[([^\d\]][^\]]*)\]\s*(.*)/s);
+    if (runnerPfx && !/^\d{4}-\d{2}-\d{2}/.test(runnerPfx[1]) && !/^(INFO|WARN|WARNING|ERROR|ERR|DEBUG|DBG|TRACE|TRC)$/i.test(runnerPfx[1])) {
+      source = runnerPfx[1].trim();
+      msg = runnerPfx[2].trim();
     }
   }
 

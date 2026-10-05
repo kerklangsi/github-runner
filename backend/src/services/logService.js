@@ -534,12 +534,55 @@ function getRunnerLogs(runnerId, options = {}) {
     };
   }
 
+// Fills missing timestamps in runner log lines using adjacent events.
+function fillTimestamps(lines, fallbackTime) {
+  if (!lines || lines.length === 0) return [];
+  const entries = lines.map(line => {
+    const match = line.match(/^(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)[: ]\s*(.*)/);
+    return {
+      raw: line,
+      ts: match ? match[1].replace(' ', 'T') : null,
+      content: match ? match[2] : line
+    };
+  });
+
+  let nextTs = null;
+  let nextIdx = -1;
+  for (let i = entries.length - 1; i >= 0; i--) {
+    if (entries[i].ts) {
+      nextTs = entries[i].ts;
+      nextIdx = i;
+    } else if (nextTs) {
+      const baseMs = Date.parse(nextTs.endsWith('Z') ? nextTs : nextTs + 'Z');
+      const offsetMs = Math.max(0, (nextIdx - i)) * 1000;
+      const targetDate = new Date(baseMs - offsetMs);
+      entries[i].ts = targetDate.toISOString().replace('.000Z', 'Z');
+    }
+  }
+
+  let prevTs = null;
+  for (let i = 0; i < entries.length; i++) {
+    if (entries[i].ts) {
+      prevTs = entries[i].ts;
+    } else if (prevTs) {
+      entries[i].ts = prevTs;
+    } else {
+      entries[i].ts = fallbackTime || new Date().toISOString();
+    }
+  }
+
+  return entries.map(e => `${e.ts.replace('T', ' ')}: ${e.content}`);
+}
+
   const logFile = path.join(runnerDir, 'logs', 'runner.log');
   let lines = [];
 
   if (fs.existsSync(logFile)) {
     const raw = fs.readFileSync(logFile, 'utf-8');
     lines = collapseMultiLineLogs(raw);
+    const mtime = fs.statSync(logFile).mtime.toISOString();
+    const fallbackTime = (runner && runner.createdDate) ? runner.createdDate : mtime;
+    lines = fillTimestamps(lines, fallbackTime);
   }
 
   let diagDir = path.join(runnerDir, 'actions-runner', '_diag');
@@ -691,7 +734,12 @@ function getGlobalLogs(options = {}) {
           const res = getRunnerLogs(name, { limit: 50, level: options.level });
           if (res.lines && res.lines.length > 0) {
             res.lines.forEach(l => {
-              allLines.push(`[${name}] ${l}`);
+              const tsMatch = l.match(/^(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?[: ]*)(.*)/);
+              if (tsMatch) {
+                allLines.push(`${tsMatch[1]}[${name}] ${tsMatch[2]}`);
+              } else {
+                allLines.push(`[${name}] ${l}`);
+              }
             });
           }
         }
@@ -713,8 +761,8 @@ function getGlobalLogs(options = {}) {
     const tsA = extractLogTimestamp(a);
     const tsB = extractLogTimestamp(b);
     if (tsA && tsB) return tsA - tsB;
-    if (tsA) return 1;
-    if (tsB) return -1;
+    if (tsA && !tsB) return -1;
+    if (!tsA && tsB) return 1;
     return 0;
   });
 
