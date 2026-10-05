@@ -87,6 +87,37 @@ export function handleSaveLogFile(filename, logsArray, triggerToast) {
   if (triggerToast) triggerToast(`Downloaded ${cleanName}`, 'success');
 }
 
+// Converts a UTC timestamp string to the target timezone formatted as YYYY-MM-DD HH:MM:SS.
+export function convertTimezone(ts, timezone) {
+  if (!ts) return '';
+  try {
+    const cleanTs = ts.includes('T') ? ts : ts.replace(' ', 'T');
+    const utcDate = new Date(cleanTs.endsWith('Z') ? cleanTs : cleanTs + 'Z');
+    if (isNaN(utcDate.getTime())) return ts;
+
+    const tz = (!timezone || timezone === 'Browser Default' || timezone === 'auto')
+      ? Intl.DateTimeFormat().resolvedOptions().timeZone
+      : timezone;
+
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+
+    const parts = formatter.formatToParts(utcDate);
+    const get = type => parts.find(p => p.type === type)?.value || '';
+    return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}:${get('second')}`;
+  } catch (e) {
+    return ts;
+  }
+}
+
 /**
  * Normalize raw log line into [timestamp] [source] [level] message
  */
@@ -140,6 +171,8 @@ export function normalizeLogLine(line, sourceHint = 'global', lastTs = '', showS
   }
 
   const ts = timestamp || lastTs;
+  const displayTs = convertTimezone(ts, settings.timezone);
+
   const lvlMatch = msg.match(/^\[([A-Z]{3,5})(?:\s+[^\]]*)?\]\s*(.*)/s);
   if (lvlMatch) {
     level = lvlMatch[1];
@@ -153,8 +186,8 @@ export function normalizeLogLine(line, sourceHint = 'global', lastTs = '', showS
   let text;
   if (settings.showTimestamps === false) {
     text = showSource ? `[${source}] [${level}] ${msg}` : `[${level}] ${msg}`;
-  } else if (ts) {
-    text = showSource ? `[${ts}] [${source}] [${level}] ${msg}` : `[${ts}] [${level}] ${msg}`;
+  } else if (displayTs) {
+    text = showSource ? `[${displayTs}] [${source}] [${level}] ${msg}` : `[${displayTs}] [${level}] ${msg}`;
   } else {
     text = showSource ? `[${source}] [${level}] ${msg}` : `[${level}] ${msg}`;
   }

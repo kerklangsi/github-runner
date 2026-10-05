@@ -1,5 +1,50 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Palette, Clock } from 'lucide-react';
+
+// Builds a list of timezones sorted by UTC offset.
+function getTimezones() {
+  let rawList = [];
+  try {
+    rawList = Intl.supportedValuesOf('timeZone');
+  } catch (e) {
+    rawList = [
+      'UTC', 'Asia/Kuala_Lumpur', 'Asia/Singapore', 'Asia/Tokyo',
+      'Asia/Shanghai', 'Asia/Hong_Kong', 'Asia/Bangkok', 'Asia/Jakarta',
+      'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'America/New_York',
+      'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'Australia/Sydney'
+    ];
+  }
+
+  const now = new Date();
+  const parsed = [];
+  const seen = new Set();
+
+  for (const tz of rawList) {
+    if (seen.has(tz)) continue;
+    seen.add(tz);
+    try {
+      const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'shortOffset' }).formatToParts(now);
+      const offsetName = parts.find(p => p.type === 'timeZoneName')?.value || 'GMT';
+      const match = offsetName.match(/GMT([+-])(\d+)(?::(\d+))?/);
+      let offsetMins = 0;
+      if (match) {
+        const sign = match[1] === '-' ? -1 : 1;
+        const hrs = parseInt(match[2], 10);
+        const mins = match[3] ? parseInt(match[3], 10) : 0;
+        offsetMins = sign * (hrs * 60 + mins);
+      }
+      const signStr = offsetMins >= 0 ? '+' : '-';
+      const absMins = Math.abs(offsetMins);
+      const hStr = String(Math.floor(absMins / 60)).padStart(2, '0');
+      const mStr = String(absMins % 60).padStart(2, '0');
+      const utcCode = `(UTC${signStr}${hStr}:${mStr})`;
+      parsed.push({ tz, label: `${utcCode} ${tz}`, offsetMins });
+    } catch (e) {}
+  }
+
+  parsed.sort((a, b) => a.offsetMins - b.offsetMins || a.tz.localeCompare(b.tz));
+  return parsed;
+}
 
 export default function AppearanceCard({
   settings,
@@ -8,6 +53,15 @@ export default function AppearanceCard({
   triggerToast,
   autoSaveSettings
 }) {
+  const timezones = useMemo(() => getTimezones(), []);
+  const localTz = useMemo(() => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Browser Default';
+    } catch (e) {
+      return 'Browser Default';
+    }
+  }, []);
+
   return (
     <div className="bg-[#161b22] border border-[#30363d] rounded-xl p-5 space-y-4">
       <div className="border-b border-[#30363d] pb-3">
@@ -54,12 +108,11 @@ export default function AppearanceCard({
           onChange={e => autoSaveSettings({ ...settings, timezone: e.target.value }, `Timezone set to '${e.target.value}'`)}
           className="w-full bg-[#161b22] border border-[#30363d] rounded-lg px-3 py-1.5 text-white text-xs focus:outline-none focus:border-[#58a6ff] mt-1"
         >
-        {['Browser Default','UTC','GMT','US/Eastern','US/Central','US/Mountain','US/Pacific',
-          'Europe/London','Europe/Paris','Europe/Berlin','Europe/Moscow',
-          'Asia/Tokyo','Asia/Shanghai','Asia/Singapore','Asia/Kolkata','Asia/Bangkok','Asia/Seoul',
-          'Australia/Sydney','Pacific/Auckland','America/Sao_Paulo'].map(tz => (
-          <option key={tz} value={tz}>{tz}</option>
-        ))}
+          <option value="Browser Default">Auto-Detect ({localTz})</option>
+          <option value="UTC">(UTC+00:00) UTC (Universal Coordinated Time)</option>
+          {timezones.map(item => (
+            <option key={item.tz} value={item.tz}>{item.label}</option>
+          ))}
         </select>
       </div>
     </div>
