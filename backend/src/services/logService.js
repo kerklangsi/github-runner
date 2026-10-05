@@ -52,6 +52,42 @@ function initSystemLogs() {
     try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
   }
   fs.writeFileSync(SYSTEM_LOG_PATH, '');
+
+  // Rotate runner daemon and workflow logs from previous container session across all runners
+  try {
+    const defaultBase = process.env.RUNNER_DIR || process.env.RUNNERS_DIR || (fs.existsSync('/opt/github-runner') ? '/opt/github-runner' : '/opt/github-runners');
+    if (fs.existsSync(defaultBase)) {
+      const runnerDirs = fs.readdirSync(defaultBase);
+      runnerDirs.forEach(entry => {
+        const rDir = path.join(defaultBase, entry);
+        try {
+          if (!fs.statSync(rDir).isDirectory()) return;
+          const logsDir = path.join(rDir, 'logs');
+          if (!fs.existsSync(logsDir)) return;
+
+          // 1. Rotate runner.log
+          const runnerLog = path.join(logsDir, 'runner.log');
+          if (fs.existsSync(runnerLog) && fs.statSync(runnerLog).size > 0) {
+            const runnerArchiveDir = path.join(logsDir, 'archive');
+            if (!fs.existsSync(runnerArchiveDir)) fs.mkdirSync(runnerArchiveDir, { recursive: true });
+            const ts = new Date().toISOString().replace(/[:.]/g, '-');
+            fs.copyFileSync(runnerLog, path.join(runnerArchiveDir, `runner_${ts}.log`));
+            fs.writeFileSync(runnerLog, '');
+          }
+
+          // 2. Rotate job-logs.txt
+          const jobLog = path.join(logsDir, 'job-logs.txt');
+          if (fs.existsSync(jobLog) && fs.statSync(jobLog).size > 0) {
+            const wfDir = path.join(logsDir, 'workflows');
+            if (!fs.existsSync(wfDir)) fs.mkdirSync(wfDir, { recursive: true });
+            const ts = new Date().toISOString().replace(/[:.]/g, '-');
+            fs.copyFileSync(jobLog, path.join(wfDir, `workflow_${ts}.log`));
+            fs.writeFileSync(jobLog, '');
+          }
+        } catch (e) {}
+      });
+    }
+  } catch (e) {}
 }
 
 initSystemLogs();
@@ -351,19 +387,6 @@ function readWorkflow(runnerDir) {
     const raw = fs.readFileSync(jobLogPath, 'utf-8');
     const lines = raw.split('\n').map(l => l.replace(/\r$/, '')).filter(l => l.length > 0);
     if (lines.length > 0) return dedupeLines(lines);
-    return [];
-  }
-  const workflowsDir = path.join(runnerDir, 'logs', 'workflows');
-  if (fs.existsSync(workflowsDir)) {
-    try {
-      const files = fs.readdirSync(workflowsDir).filter(f => f.endsWith('.log'));
-      if (files.length > 0) {
-        files.sort((a, b) => fs.statSync(path.join(workflowsDir, b)).mtimeMs - fs.statSync(path.join(workflowsDir, a)).mtimeMs);
-        const latest = path.join(workflowsDir, files[0]);
-        const raw = fs.readFileSync(latest, 'utf-8');
-        return dedupeLines(raw.split('\n').map(l => l.replace(/\r$/, '')).filter(l => l.length > 0));
-      }
-    } catch (e) {}
   }
   return [];
 }

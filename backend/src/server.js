@@ -313,6 +313,37 @@ app.post('/api/logs/archives/clean', (req, res) => {
   res.json({ success: true, deleted: result.deleted });
 });
 
+// 11c. List Available Log Archives
+app.get('/api/logs/archives', (req, res) => {
+  const archiveDir = path.join(process.env.DATA_DIR || '/app/data', 'archive');
+  if (!fs.existsSync(archiveDir)) return res.json({ archives: [] });
+  try {
+    const files = fs.readdirSync(archiveDir).map(file => {
+      const stat = fs.statSync(path.join(archiveDir, file));
+      return {
+        name: file,
+        size: stat.size,
+        modified: stat.mtime.toISOString()
+      };
+    });
+    files.sort((a, b) => new Date(b.modified) - new Date(a.modified));
+    res.json({ archives: files });
+  } catch (e) {
+    res.json({ archives: [] });
+  }
+});
+
+// 11d. Download Archived Log File
+app.get('/api/logs/archives/:filename', (req, res) => {
+  const archiveDir = path.join(process.env.DATA_DIR || '/app/data', 'archive');
+  const safeName = path.basename(req.params.filename);
+  const target = path.join(archiveDir, safeName);
+  if (!fs.existsSync(target)) return res.status(404).send('Archive not found');
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+  res.sendFile(target);
+});
+
 // 13. Workflow History (log-parsed per runner)
 function parseWorkflowHistory(runnerId) {
   try {

@@ -461,6 +461,18 @@ function startRunner(id) {
     }
   } catch (e) {}
 
+  // Archive existing workflow execution log if not empty
+  try {
+    const jobLogPath = path.join(logsDir, 'job-logs.txt');
+    if (fs.existsSync(jobLogPath) && fs.statSync(jobLogPath).size > 0) {
+      const wfDir = path.join(logsDir, 'workflows');
+      if (!fs.existsSync(wfDir)) fs.mkdirSync(wfDir, { recursive: true });
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      fs.copyFileSync(jobLogPath, path.join(wfDir, `workflow_${stamp}.log`));
+      fs.writeFileSync(jobLogPath, '');
+    }
+  } catch (e) {}
+
   ensureSharedRepoLink(runner);
 
   // Truncate the log file on each fresh start so previous session logs don't bleed in
