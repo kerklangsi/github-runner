@@ -335,6 +335,7 @@ function filterSteps(lines) {
     /removing\s*previously\s*created\s*refs/i,
     /disabling\s*automatic\s*garbage/i,
     /setting\s*up\s*auth/i,
+    /setup\s*auth\s*link/i,
     /(actions\/)?setup[\s-]*python(@v\d+)?/i,
     /installed\s*versions/i,
     /install\s*dependencies/i,
@@ -373,7 +374,19 @@ function filterSteps(lines) {
     /successfully\s*installed/i,
     /shell:\s*\/usr\/bin\/bash/i,
     /env:\s*$/i,
-    /^\s*(pythonLocation|PKG_CONFIG_PATH|Python\d?_ROOT_DIR|LD_LIBRARY_PATH|PYTHONUNBUFFERED):/i
+    /^\s*(pythonLocation|PKG_CONFIG_PATH|Python\d?_ROOT_DIR|LD_LIBRARY_PATH|PYTHONUNBUFFERED):/i,
+    /installing\s*dependencies\.\.\./i,
+    /switching\s*to\s*root\s*user\s*to\s*install/i,
+    /^(hit|get|ign):\d+\s+https?:\/\//i,
+    /^(reading\s*package\s*lists|building\s*dependency\s*tree|reading\s*state\s*information)/i,
+    /^(need\s*to\s*get|after\s*this\s*operation|\d+\s*upgraded,\s*\d+\s*newly\s*installed)/i,
+    /is\s*already\s*the\s*newest\s*version/i,
+    /^(selecting\s*previously\s*unselected\s*package|preparing\s*to\s*unpack|unpacking|setting\s*up|processing\s*triggers\s*for)\s/i,
+    /^BECOME-(OK|ROOT)/i,
+    /^(downloading|downloaded)\s+(chromium|firefox|webkit|ffmpeg)/i,
+    /playwright\s*install/i,
+    /\[\s*!\s*-L\s+auth\s*\]/i,
+    /setup\s*auth\s*link/i
   ];
 
   const result = [];
