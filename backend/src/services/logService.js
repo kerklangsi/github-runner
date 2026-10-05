@@ -84,6 +84,19 @@ function initSystemLogs() {
             fs.copyFileSync(jobLog, path.join(wfDir, `workflow_${ts}.log`));
             fs.writeFileSync(jobLog, '');
           }
+
+          // 3. Rotate .NET diagnostic logs from previous session
+          const diagDir = path.join(rDir, 'actions-runner', '_diag');
+          if (fs.existsSync(diagDir)) {
+            const diagArchive = path.join(diagDir, 'archive');
+            const diagFiles = fs.readdirSync(diagDir).filter(f => (f.startsWith('Runner_') || f.startsWith('Worker_')) && f.endsWith('.log'));
+            if (diagFiles.length > 0) {
+              if (!fs.existsSync(diagArchive)) fs.mkdirSync(diagArchive, { recursive: true });
+              diagFiles.forEach(f => {
+                try { fs.renameSync(path.join(diagDir, f), path.join(diagArchive, f)); } catch (e) {}
+              });
+            }
+          }
         } catch (e) {}
       });
     }
@@ -418,6 +431,7 @@ function cleanArchives(retentionSetting = 'never', customDays = 0) {
       const dir = r.dir || path.join(DEFAULT_RUNNER_DIR, r.name || r.id);
       targetDirs.push(path.join(dir, 'logs', 'archive'));
       targetDirs.push(path.join(dir, 'logs', 'workflows'));
+      targetDirs.push(path.join(dir, 'actions-runner', '_diag', 'archive'));
     });
   } catch (e) {}
 
