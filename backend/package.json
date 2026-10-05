@@ -1,6 +1,6 @@
 {
   "name": "github-runner-manager-backend",
-  "version": "4.0.0",
+  "version": "4.0.1",
   "description": "Backend REST API and runner process supervisor for GitHub Runner Manager",
   "main": "src/server.js",
   "type": "commonjs",
