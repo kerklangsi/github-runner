@@ -73,6 +73,8 @@ export default function SettingsTab({
         <LogLevelCard
           settings={settings}
           handleLogLevelChange={handleLogLevelChange}
+          autoSaveSettings={autoSaveSettings}
+          triggerToast={triggerToast}
         />
         <AppearanceCard
           settings={settings}

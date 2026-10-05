@@ -15,6 +15,10 @@ function ensureBaseDir() {
   if (!fs.existsSync(SHARED_DATA_DIR)) {
     fs.mkdirSync(SHARED_DATA_DIR, { recursive: true });
   }
+  const sharedAuthBase = path.join(SHARED_DATA_DIR, 'shared_auth');
+  if (!fs.existsSync(sharedAuthBase)) {
+    try { fs.mkdirSync(sharedAuthBase, { recursive: true }); } catch (e) {}
+  }
 }
 
 // Resolves and returns absolute path of runner directory.
@@ -161,10 +165,32 @@ function createRunner(options) {
   const repoInfo = extractRepoInfo(options.githubUrl);
   const repoName = repoInfo.repo || repoInfo.fullKey;
   const sharedRepoDir = path.join(SHARED_DATA_DIR, repoName);
+  const sharedAuthDir = path.join(SHARED_DATA_DIR, 'shared_auth', repoName);
+  const localAuthDir = path.join(sharedRepoDir, 'auth');
 
-  // Pre-create auth/ at shared workspace root (shared_data/REPO/auth/)
+  // Pre-create shared_auth directory and clean any broken auth symlink/file in sharedRepoDir
   try {
-    fs.mkdirSync(path.join(sharedRepoDir, 'auth'), { recursive: true });
+    fs.mkdirSync(sharedAuthDir, { recursive: true });
+    fs.mkdirSync(sharedRepoDir, { recursive: true });
+    try {
+      const stat = fs.lstatSync(localAuthDir);
+      if (stat.isSymbolicLink()) {
+        const target = fs.readlinkSync(localAuthDir);
+        if (target.includes(localAuthDir) || target === 'auth' || !fs.existsSync(localAuthDir)) {
+          fs.unlinkSync(localAuthDir);
+        }
+      } else if (!stat.isDirectory()) {
+        fs.unlinkSync(localAuthDir);
+      }
+    } catch (e) {}
+
+    if (!fs.existsSync(localAuthDir)) {
+      try {
+        fs.symlinkSync(sharedAuthDir, localAuthDir, 'dir');
+      } catch (e) {
+        fs.mkdirSync(localAuthDir, { recursive: true });
+      }
+    }
   } catch (e) {}
 
   // Symlink _work/REPO/REPO → shared_data/REPO so all runners share one workspace
@@ -186,7 +212,8 @@ function createRunner(options) {
     const envFile = path.join(actionsRunnerDir, '.env');
     const envContent = [
       'RUNNER_TOOL_CACHE=/opt/hostedtoolcache',
-      `SHARED_REPO_DATA=${sharedRepoDir}`
+      `SHARED_REPO_DATA=${sharedRepoDir}`,
+      `SHARED_AUTH_DIR=${sharedAuthDir}`
     ].join('\n') + '\n';
     fs.writeFileSync(envFile, envContent);
   } catch (e) {}

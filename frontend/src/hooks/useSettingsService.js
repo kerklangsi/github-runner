@@ -13,7 +13,9 @@ export function useSettingsService(triggerToast, showConfirm, fetchRunners) {
     watchdogIntervalSec: 30,
     webhookEnabled: false,
     webhookUrl: '',
-    webhookEvents: ['runner_crashed', 'runner_offline']
+    webhookEvents: ['runner_crashed', 'runner_offline'],
+    archiveRetention: 'never',
+    archiveRetentionDays: 30
   });
 
   const [pwdForm, setPwdForm] = useState({

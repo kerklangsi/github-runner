@@ -304,6 +304,15 @@ app.post('/api/logs/global/clear', (req, res) => {
   res.json({ success: true, message: 'Global logs buffer cleared successfully' });
 });
 
+// 11b. Clean Log Archives by Retention Policy
+app.post('/api/logs/archives/clean', (req, res) => {
+  const settings = db.getSettings();
+  const retention = (req.body && req.body.retention) || settings.archiveRetention || 'never';
+  const customDays = (req.body && req.body.customDays) || settings.archiveRetentionDays || 0;
+  const result = logService.cleanArchives(retention, customDays);
+  res.json({ success: true, deleted: result.deleted });
+});
+
 // 13. Workflow History (log-parsed per runner)
 function parseWorkflowHistory(runnerId) {
   try {
@@ -474,4 +483,16 @@ app.listen(PORT, '0.0.0.0', () => {
   watchdogService.updateSettings(savedSettings);
   webhookService.updateSettings(savedSettings);
   logService.startHarvester();
+
+  // Hourly background cleaner for log archives
+  setInterval(() => {
+    const s = db.getSettings();
+    if (s.archiveRetention && s.archiveRetention !== 'never') {
+      logService.cleanArchives(s.archiveRetention, s.archiveRetentionDays);
+    }
+  }, 60 * 60 * 1000);
+
+  if (savedSettings.archiveRetention && savedSettings.archiveRetention !== 'never') {
+    logService.cleanArchives(savedSettings.archiveRetention, savedSettings.archiveRetentionDays);
+  }
 });

@@ -13,7 +13,51 @@ const SYSTEM_LOG_PATH = process.env.SYSTEM_LOG_PATH || path.join(process.env.DAT
 const DOCKER_LOG_PATH = path.join(process.env.DATA_DIR || '/app/data', 'docker.log');
 const DEFAULT_RUNNER_DIR = process.env.RUNNER_DIR || process.env.RUNNERS_DIR || (fs.existsSync('/opt/github-runner') ? '/opt/github-runner' : '/opt/github-runners');
 
+let isSystemLogsInitialized = false;
+
+// Initializes and rotates system and docker logs on container startup.
+function initSystemLogs() {
+  if (isSystemLogsInitialized) return;
+  isSystemLogsInitialized = true;
+
+  const archiveDir = path.join(path.dirname(SYSTEM_LOG_PATH), 'archive');
+  if (!fs.existsSync(archiveDir)) {
+    try { fs.mkdirSync(archiveDir, { recursive: true }); } catch (e) {}
+  }
+
+  // Rotate existing system.log from previous container session
+  if (fs.existsSync(SYSTEM_LOG_PATH)) {
+    try {
+      const stat = fs.statSync(SYSTEM_LOG_PATH);
+      if (stat.size > 0) {
+        const ts = stat.mtime.toISOString().replace(/[:.]/g, '-');
+        fs.renameSync(SYSTEM_LOG_PATH, path.join(archiveDir, `system_${ts}.log`));
+      }
+    } catch (e) {}
+  }
+
+  // Rotate existing docker.log from previous container session
+  if (fs.existsSync(DOCKER_LOG_PATH)) {
+    try {
+      const stat = fs.statSync(DOCKER_LOG_PATH);
+      if (stat.size > 0) {
+        const ts = stat.mtime.toISOString().replace(/[:.]/g, '-');
+        fs.renameSync(DOCKER_LOG_PATH, path.join(archiveDir, `docker_${ts}.log`));
+      }
+    } catch (e) {}
+  }
+
+  const dir = path.dirname(SYSTEM_LOG_PATH);
+  if (!fs.existsSync(dir)) {
+    try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
+  }
+  fs.writeFileSync(SYSTEM_LOG_PATH, '');
+}
+
+initSystemLogs();
+
 function appendDockerLog(message) {
+  initSystemLogs();
   const dir = path.dirname(DOCKER_LOG_PATH);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
@@ -35,6 +79,7 @@ console.error = function (...args) {
 };
 
 function addSystemLog(level = 'INFO', message = '') {
+  initSystemLogs();
   const dir = path.dirname(SYSTEM_LOG_PATH);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
@@ -324,20 +369,58 @@ function readWorkflow(runnerDir) {
 }
 
 
-function initSystemLogs() {
-  if (!fs.existsSync(SYSTEM_LOG_PATH)) {
-    const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
-    const initialLines = [
-      `[${now}] [INFO] Docker container system supervisor initialized.`,
-      `[${now}] [DEBUG] Memory cgroup v2 monitoring active (/sys/fs/cgroup/memory.current).`,
-      `[${now}] [INFO] Express API server listening on 0.0.0.0:${process.env.PORT || 3000}.`
-    ].join('\n') + '\n';
-    const dir = path.dirname(SYSTEM_LOG_PATH);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    fs.writeFileSync(SYSTEM_LOG_PATH, initialLines);
+// Purges log archives older than the specified retention threshold.
+function cleanArchives(retentionSetting = 'never', customDays = 0) {
+  let maxAgeMs = 0;
+  if (retentionSetting === 'daily') maxAgeMs = 24 * 60 * 60 * 1000;
+  else if (retentionSetting === 'weekly') maxAgeMs = 7 * 24 * 60 * 60 * 1000;
+  else if (retentionSetting === 'monthly') maxAgeMs = 30 * 24 * 60 * 60 * 1000;
+  else if (retentionSetting === 'custom') {
+    const days = parseInt(customDays, 10);
+    if (!isNaN(days) && days > 0) maxAgeMs = days * 24 * 60 * 60 * 1000;
   }
+  if (!maxAgeMs) return { deleted: 0 };
+
+  const now = Date.now();
+  let deletedCount = 0;
+  const targetDirs = [
+    path.join(process.env.DATA_DIR || '/app/data', 'archive'),
+    path.join(process.env.DATA_DIR || '/app/data', 'archived-logs')
+  ];
+
+  try {
+    const runnerService = require('./runnerService');
+    const runners = runnerService.getAllRunners ? runnerService.getAllRunners() : [];
+    runners.forEach(r => {
+      const dir = r.dir || path.join(DEFAULT_RUNNER_DIR, r.name || r.id);
+      targetDirs.push(path.join(dir, 'logs', 'archive'));
+      targetDirs.push(path.join(dir, 'logs', 'workflows'));
+    });
+  } catch (e) {}
+
+  targetDirs.forEach(dir => {
+    if (fs.existsSync(dir)) {
+      try {
+        const files = fs.readdirSync(dir);
+        files.forEach(file => {
+          const filePath = path.join(dir, file);
+          try {
+            const stat = fs.statSync(filePath);
+            if (now - stat.mtimeMs > maxAgeMs) {
+              if (stat.isDirectory()) {
+                fs.rmSync(filePath, { recursive: true, force: true });
+              } else {
+                fs.unlinkSync(filePath);
+              }
+              deletedCount++;
+            }
+          } catch (e) {}
+        });
+      } catch (e) {}
+    }
+  });
+
+  return { deleted: deletedCount };
 }
 
 function parseLogLevel(line) {
@@ -527,7 +610,15 @@ function getRunnerLogs(runnerId, options = {}) {
 
   if (serveWorkflow) {
     let resultLines = rawWorkflowLines;
-    if (resultLines.length > 0 && options.raw !== 'true' && options.raw !== true) {
+    let effectiveLevel = (options.level || '').toUpperCase();
+    if (!effectiveLevel) {
+      try {
+        const db = require('../db/database');
+        effectiveLevel = ((db.getSettings && db.getSettings().logLevel) || '').toUpperCase();
+      } catch (e) {}
+    }
+    const isDebug = effectiveLevel === 'DEBUG' || effectiveLevel === 'ALL';
+    if (resultLines.length > 0 && options.raw !== 'true' && options.raw !== true && !isDebug) {
       resultLines = filterSteps(resultLines);
     }
     if (options.search) {
@@ -894,6 +985,7 @@ module.exports = {
   getGlobalLogs,
   clearGlobalLogs,
   clearRunnerLogs,
+  cleanArchives,
   startHarvester,
   harvestLogs,
   filterSteps
