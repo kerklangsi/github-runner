@@ -327,22 +327,23 @@ function dedupeLines(lines) {
 function filterSteps(lines) {
   const IGNORED_GROUPS = [
     /set\s*up\s*job/i,
+    /github_token\s*permissions/i,
     /(actions\/)?checkout(@v\d+)?/i,
-    /fetching\s*the\s*repository/i,
-    /checking\s*out\s*the\s*ref/i,
     /getting\s*git\s*version/i,
     /removing\s*previously\s*created\s*refs/i,
     /disabling\s*automatic\s*garbage/i,
     /setting\s*up\s*auth/i,
-    /setup\s*auth\s*link/i,
+    /fetching\s*the\s*repository/i,
+    /determining\s*the\s*checkout/i,
+    /checking\s*out\s*the\s*ref/i,
     /(actions\/)?setup[\s-]*python(@v\d+)?/i,
     /installed\s*versions/i,
     /install\s*dependencies/i,
     /pip\s*install/i,
+    /playwright\s*install/i,
     /post\s*set[\s-]*up[\s-]*python/i,
     /post\s*(actions\/)?checkout/i,
-    /complete\s*job/i,
-    /github_token\s*permissions/i
+    /complete\s*job/i
   ];
 
   const IGNORED_STANDALONE = [
@@ -385,11 +386,13 @@ function filterSteps(lines) {
     /^(downloading|downloaded)\s+(chromium|firefox|webkit|ffmpeg)/i,
     /playwright\s*install/i,
     /\[\s*!\s*-L\s+auth\s*\]/i,
-    /setup\s*auth\s*link/i
+    /setup\s*auth\s*link/i,
+    /^(Title|Description|Source):\s/i,
+    /^---$/
   ];
 
   const result = [];
-  let skipping = false;
+  let skippingStep = false;
   let inPostCleanup = false;
 
   for (let line of lines) {
@@ -401,7 +404,6 @@ function filterSteps(lines) {
 
     if (body.includes('Post job cleanup')) {
       inPostCleanup = true;
-      continue;
     }
     if (inPostCleanup) {
       if (body.includes('Current runner version') || body.includes('Prepare workflow directory')) {
@@ -414,20 +416,15 @@ function filterSteps(lines) {
     if (line.includes('##[group]')) {
       const stepTitle = line.split('##[group]')[1] || '';
       const isIgnored = IGNORED_GROUPS.some(p => p.test(stepTitle.trim()));
-      if (isIgnored) {
-        skipping = true;
-        continue;
-      } else {
-        skipping = false;
-      }
-    } else if (line.includes('##[endgroup]')) {
-      if (skipping) {
-        skipping = false;
-        continue;
-      }
+      skippingStep = isIgnored;
+      if (skippingStep) continue;
     }
 
-    if (skipping) continue;
+    if (line.includes('##[endgroup]')) {
+      if (skippingStep) continue;
+    }
+
+    if (skippingStep) continue;
     if (IGNORED_STANDALONE.some(p => p.test(body))) continue;
 
     result.push(line);
