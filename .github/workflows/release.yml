@@ -61,7 +61,7 @@ jobs:
       - name: Update latest tag pointer
         if: github.ref == 'refs/heads/main'
         run: |
-          git tag -f latest ${{ github.sha }}
+          git tag -f latest "${{ steps.version.outputs.tag }}"
           git push -f origin latest || true
 
       - name: Generate Dynamic Release Notes
