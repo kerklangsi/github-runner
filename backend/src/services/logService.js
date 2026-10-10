@@ -65,9 +65,9 @@ function initSystemLogs() {
           const logsDir = path.join(rDir, 'logs');
           if (!fs.existsSync(logsDir)) return;
 
-          // 1. Rotate runner.log
+          // 1. Rotate runner.log if large (> 100KB)
           const runnerLog = path.join(logsDir, 'runner.log');
-          if (fs.existsSync(runnerLog) && fs.statSync(runnerLog).size > 0) {
+          if (fs.existsSync(runnerLog) && fs.statSync(runnerLog).size > 100 * 1024) {
             const runnerArchiveDir = path.join(logsDir, 'archive');
             if (!fs.existsSync(runnerArchiveDir)) fs.mkdirSync(runnerArchiveDir, { recursive: true });
             const ts = new Date().toISOString().replace(/[:.]/g, '-');
@@ -75,9 +75,9 @@ function initSystemLogs() {
             fs.writeFileSync(runnerLog, '');
           }
 
-          // 2. Rotate job-logs.txt
+          // 2. Rotate job-logs.txt if large (> 500KB)
           const jobLog = path.join(logsDir, 'job-logs.txt');
-          if (fs.existsSync(jobLog) && fs.statSync(jobLog).size > 0) {
+          if (fs.existsSync(jobLog) && fs.statSync(jobLog).size > 500 * 1024) {
             const wfDir = path.join(logsDir, 'workflows');
             if (!fs.existsSync(wfDir)) fs.mkdirSync(wfDir, { recursive: true });
             const ts = new Date().toISOString().replace(/[:.]/g, '-');
@@ -106,7 +106,6 @@ function initSystemLogs() {
 initSystemLogs();
 
 function appendDockerLog(message) {
-  initSystemLogs();
   const dir = path.dirname(DOCKER_LOG_PATH);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
@@ -445,6 +444,18 @@ function readWorkflow(runnerDir) {
     const lines = raw.split('\n').map(l => l.replace(/\r$/, '')).filter(l => l.length > 0);
     if (lines.length > 0) return dedupeLines(lines);
   }
+
+  const wfDir = path.join(runnerDir, 'logs', 'workflows');
+  if (fs.existsSync(wfDir)) {
+    try {
+      const files = fs.readdirSync(wfDir).filter(f => f.startsWith('workflow_') && f.endsWith('.log')).sort().reverse();
+      if (files.length > 0) {
+        const raw = fs.readFileSync(path.join(wfDir, files[0]), 'utf-8');
+        const lines = raw.split('\n').map(l => l.replace(/\r$/, '')).filter(l => l.length > 0);
+        if (lines.length > 0) return dedupeLines(lines);
+      }
+    } catch (e) {}
+  }
   return [];
 }
 
@@ -765,6 +776,21 @@ function fillTimestamps(lines, fallbackTime) {
     lines = fillTimestamps(lines, fallbackTime);
   }
 
+  if (lines.length === 0) {
+    const runnerArchiveDir = path.join(runnerDir, 'logs', 'archive');
+    if (fs.existsSync(runnerArchiveDir)) {
+      try {
+        const files = fs.readdirSync(runnerArchiveDir).filter(f => f.startsWith('runner_') && f.endsWith('.log')).sort().reverse();
+        if (files.length > 0) {
+          const raw = fs.readFileSync(path.join(runnerArchiveDir, files[0]), 'utf-8');
+          lines = collapseMultiLineLogs(raw);
+          const fallbackTime = (runner && runner.createdDate) ? runner.createdDate : new Date().toISOString();
+          lines = fillTimestamps(lines, fallbackTime);
+        }
+      } catch (e) {}
+    }
+  }
+
   let diagDir = path.join(runnerDir, 'actions-runner', '_diag');
   if (!fs.existsSync(diagDir) && fs.existsSync(path.join(runnerDir, '_diag'))) {
     diagDir = path.join(runnerDir, '_diag');
@@ -864,7 +890,6 @@ function extractLogTimestamp(line) {
 }
 
 function getGlobalLogs(options = {}) {
-  initSystemLogs();
   let allLines = [];
 
   // Read system event logs
@@ -888,11 +913,24 @@ function getGlobalLogs(options = {}) {
   if (runners && runners.length > 0) {
     runners.forEach(runner => {
       const runnerIdDisplay = runner.name || runner.id.replace('runner-', '');
-      const res = getRunnerLogs(runner.id, { limit: 50, level: options.level, source: 'daemon' });
-      if (res.lines && res.lines.length > 0) {
-        res.lines.forEach(l => {
-          // Preserve any embedded timestamp: put [runnerName] after it so normalizeLogLine
-          // can still extract the timestamp from the original position
+
+      // 1. Runner daemon lifecycle logs
+      const daemonRes = getRunnerLogs(runner.id, { limit: 50, level: options.level, source: 'daemon' });
+      if (daemonRes.lines && daemonRes.lines.length > 0) {
+        daemonRes.lines.forEach(l => {
+          const tsMatch = l.match(/^(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?[: ]*)(.*)/);
+          if (tsMatch) {
+            allLines.push(`${tsMatch[1]}[${runnerIdDisplay}] ${tsMatch[2]}`);
+          } else {
+            allLines.push(`[${runnerIdDisplay}] ${l}`);
+          }
+        });
+      }
+
+      // 2. Runner workflow execution logs (so users see job script outputs like D in Global Log UI)
+      const wfRes = getRunnerLogs(runner.id, { limit: 100, level: options.level, source: 'workflow' });
+      if (wfRes.lines && wfRes.lines.length > 0) {
+        wfRes.lines.forEach(l => {
           const tsMatch = l.match(/^(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?[: ]*)(.*)/);
           if (tsMatch) {
             allLines.push(`${tsMatch[1]}[${runnerIdDisplay}] ${tsMatch[2]}`);
@@ -911,9 +949,20 @@ function getGlobalLogs(options = {}) {
       const archivedNames = fs.readdirSync(archiveDir);
       archivedNames.forEach(name => {
         if (!runners || !runners.some(r => r.name === name || r.id === name)) {
-          const res = getRunnerLogs(name, { limit: 50, level: options.level, source: 'daemon' });
-          if (res.lines && res.lines.length > 0) {
-            res.lines.forEach(l => {
+          const daemonRes = getRunnerLogs(name, { limit: 50, level: options.level, source: 'daemon' });
+          if (daemonRes.lines && daemonRes.lines.length > 0) {
+            daemonRes.lines.forEach(l => {
+              const tsMatch = l.match(/^(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?[: ]*)(.*)/);
+              if (tsMatch) {
+                allLines.push(`${tsMatch[1]}[${name}] ${tsMatch[2]}`);
+              } else {
+                allLines.push(`[${name}] ${l}`);
+              }
+            });
+          }
+          const wfRes = getRunnerLogs(name, { limit: 50, level: options.level, source: 'workflow' });
+          if (wfRes.lines && wfRes.lines.length > 0) {
+            wfRes.lines.forEach(l => {
               const tsMatch = l.match(/^(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?[: ]*)(.*)/);
               if (tsMatch) {
                 allLines.push(`${tsMatch[1]}[${name}] ${tsMatch[2]}`);
