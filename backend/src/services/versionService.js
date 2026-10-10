@@ -1,6 +1,6 @@
 const https = require('https');
 
-const CURRENT_VERSION = 'v4.0.2';
+const CURRENT_VERSION = 'v4.0.3';
 const GITHUB_REPO = 'kerklangsi/github-runner';
 const DOCKERHUB_REPO = 'kerklangsi/github-runner';
 
