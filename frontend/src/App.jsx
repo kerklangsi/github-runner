@@ -151,6 +151,7 @@ export default function App() {
               handleCopyLogs={copyLogs}
               handleSaveLogFile={saveLogFile}
               settings={s.settings}
+              handleLogLevelChange={s.handleLogLevelChange}
             />
           )}
 
@@ -271,6 +272,8 @@ export default function App() {
         logSource={s.logSource}
         switchSource={s.switchSource}
         handleLogSourceChange={s.handleLogSourceChange}
+        settings={s.settings}
+        handleLogLevelChange={s.handleLogLevelChange}
       />
 
       {/* Toast Notification */}

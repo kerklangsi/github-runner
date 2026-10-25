@@ -1,0 +1,184 @@
+2026-10-10T15:23:53.0246019Z Current runner version: '2.337.0'
+2026-10-10T15:23:53.0253287Z Runner name: 'RunnerMY-tv3'
+2026-10-10T15:23:53.0253989Z Runner group name: 'Default'
+2026-10-10T15:23:53.0254801Z Machine name: 'f3f9964a7338'
+2026-10-10T15:23:53.0265290Z ##[group]GITHUB_TOKEN Permissions
+2026-10-10T15:23:53.0267482Z Actions: write
+2026-10-10T15:23:53.0268020Z ArtifactMetadata: write
+2026-10-10T15:23:53.0268567Z Attestations: write
+2026-10-10T15:23:53.0269073Z Checks: write
+2026-10-10T15:23:53.0269561Z CodeQuality: write
+2026-10-10T15:23:53.0270068Z Contents: write
+2026-10-10T15:23:53.0270576Z CopilotRequests: write
+2026-10-10T15:23:53.0271117Z Deployments: write
+2026-10-10T15:23:53.0272745Z Discussions: write
+2026-10-10T15:23:53.0273626Z Drives: write
+2026-10-10T15:23:53.0274111Z Issues: write
+2026-10-10T15:23:53.0274601Z Metadata: read
+2026-10-10T15:23:53.0275087Z Models: read
+2026-10-10T15:23:53.0275696Z Packages: write
+2026-10-10T15:23:53.0276181Z Pages: write
+2026-10-10T15:23:53.0276747Z PullRequests: write
+2026-10-10T15:23:53.0277617Z RepositoryProjects: write
+2026-10-10T15:23:53.0278318Z SecurityEvents: write
+2026-10-10T15:23:53.0279045Z Statuses: write
+2026-10-10T15:23:53.0279669Z VulnerabilityAlerts: read
+2026-10-10T15:23:53.0280342Z ##[endgroup]
+2026-10-10T15:23:53.0283435Z Secret source: Actions
+2026-10-10T15:23:53.0284781Z Cache mode: write
+2026-10-10T15:23:53.0285667Z Prepare workflow directory
+2026-10-10T15:23:53.0705076Z Prepare all required actions
+2026-10-10T15:23:53.0752166Z Getting action download info
+2026-10-10T15:23:54.0355413Z Download action repository 'actions/checkout@v7' (SHA:3d3c42e5aac5ba805825da76410c181273ba90b1)
+2026-10-10T15:23:54.8997629Z Download action repository 'actions/setup-python@v7' (SHA:5fda3b95a4ea91299a34e894583c3862153e4b97)
+2026-10-10T15:23:56.2619691Z Complete job name: refresh-token
+2026-10-10T15:23:56.4261973Z ##[group]Run actions/checkout@v7
+2026-10-10T15:23:56.4262952Z with:
+2026-10-10T15:23:56.4263496Z   clean: false
+2026-10-10T15:23:56.4264001Z   repository: kerklangsi/MY-tv
+2026-10-10T15:23:56.4269181Z   token: ***
+2026-10-10T15:23:56.4269666Z   ssh-strict: true
+2026-10-10T15:23:56.4270154Z   ssh-user: git
+2026-10-10T15:23:56.4270653Z   persist-credentials: true
+2026-10-10T15:23:56.4271243Z   sparse-checkout-cone-mode: true
+2026-10-10T15:23:56.4271833Z   fetch-depth: 1
+2026-10-10T15:23:56.4272321Z   fetch-tags: false
+2026-10-10T15:23:56.4272823Z   show-progress: true
+2026-10-10T15:23:56.4273388Z   lfs: false
+2026-10-10T15:23:56.4273853Z   submodules: false
+2026-10-10T15:23:56.4274365Z   set-safe-directory: true
+2026-10-10T15:23:56.4274943Z   allow-unsafe-pr-checkout: false
+2026-10-10T15:23:56.4275818Z ##[endgroup]
+2026-10-10T15:23:56.7302549Z Syncing repository: kerklangsi/MY-tv
+2026-10-10T15:23:56.7305133Z ##[group]Getting Git version info
+2026-10-10T15:23:56.7306278Z Working directory is '/opt/github-runner/RunnerMY-tv3/_work/MY-tv/MY-tv'
+2026-10-10T15:23:56.7487549Z [command]/usr/bin/git version
+2026-10-10T15:23:56.7488409Z git version 2.34.1
+2026-10-10T15:23:56.7587854Z ##[endgroup]
+2026-10-10T15:23:56.7595812Z Temporarily overriding HOME='/opt/github-runner/RunnerMY-tv3/_work/_temp/bb027301-cd12-4b74-819a-86925fa60507' before making global git config changes
+2026-10-10T15:23:56.7597631Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-10T15:23:56.7601077Z [command]/usr/bin/git config --global --add safe.directory /opt/github-runner/RunnerMY-tv3/_work/MY-tv/MY-tv
+2026-10-10T15:23:56.7605604Z [command]/usr/bin/git config --local --get remote.origin.url
+2026-10-10T15:23:56.7607129Z https://github.com/kerklangsi/MY-tv
+2026-10-10T15:23:56.7613402Z ##[group]Removing previously created refs, to avoid conflicts
+2026-10-10T15:23:56.7614658Z [command]/usr/bin/git rev-parse --symbolic-full-name --verify --quiet HEAD
+2026-10-10T15:23:56.7615724Z refs/heads/main
+2026-10-10T15:23:56.7619649Z [command]/usr/bin/git checkout --detach
+2026-10-10T15:23:56.7623427Z HEAD is now at cee90d2 feat(auth): unify authentication lifecycle logging across all components
+2026-10-10T15:23:56.7625279Z M	.gitattributes
+2026-10-10T15:23:56.7627534Z M	.github/workflows/refresh_token.yml
+2026-10-10T15:23:56.7630203Z M	.github/workflows/update_iptv.yml
+2026-10-10T15:23:56.7632714Z M	.gitignore
+2026-10-10T15:23:56.7633770Z M	LICENSE
+2026-10-10T15:23:56.7634456Z M	List/LIVE_LIST.md
+2026-10-10T15:23:56.7635698Z M	List/MOVIES_LIST.md
+2026-10-10T15:23:56.7637882Z M	List/SHOWS_LIST.md
+2026-10-10T15:23:56.7639986Z M	README.md
+2026-10-10T15:23:56.7641973Z M	all.m3u
+2026-10-10T15:23:56.7643498Z M	all.m3u8
+2026-10-10T15:23:56.7644178Z M	epg.xml
+2026-10-10T15:23:56.7645327Z M	epg.xml.gz
+2026-10-10T15:23:56.7647302Z M	playlist.m3u
+2026-10-10T15:23:56.7649370Z M	playlist.m3u8
+2026-10-10T15:23:56.7651491Z M	script/auth.py
+2026-10-10T15:23:56.7653231Z M	script/auth/__init__.py
+2026-10-10T15:23:56.7654196Z M	script/auth/mytv.py
+2026-10-10T15:23:56.7654947Z M	script/auth/tonton.py
+2026-10-10T15:23:56.7656194Z M	script/auth/unifi.py
+2026-10-10T15:23:56.7658448Z M	script/live/__init__.py
+2026-10-10T15:23:56.7660723Z M	script/live/mytv.py
+2026-10-10T15:23:56.7662963Z M	script/live/tonton.py
+2026-10-10T15:23:56.7664285Z M	script/live/unifi.py
+2026-10-10T15:23:56.7665527Z M	script/paths.py
+2026-10-10T15:23:56.7666249Z M	script/utils.py
+2026-10-10T15:23:56.7666992Z M	script/vod/__init__.py
+2026-10-10T15:23:56.7668630Z M	script/vod/constants.py
+2026-10-10T15:23:56.7670693Z M	script/vod/html_generator.py
+2026-10-10T15:23:56.7671850Z M	script/vod/mytv.py
+2026-10-10T15:23:56.7672778Z M	script/vod/tonton.py
+2026-10-10T15:23:56.7673523Z M	script/vod/unifi.py
+2026-10-10T15:23:56.7674251Z M	script/vod/utils.py
+2026-10-10T15:23:56.7674977Z M	script/vod_generator.py
+2026-10-10T15:23:56.7675712Z M	token.json
+2026-10-10T15:23:56.7676740Z ##[group]Resetting working tree to HEAD
+2026-10-10T15:23:56.7677942Z [command]/usr/bin/git reset --hard HEAD
+2026-10-10T15:23:56.7725962Z HEAD is now at cee90d2 feat(auth): unify authentication lifecycle logging across all components
+2026-10-10T15:23:56.7735398Z ##[endgroup]
+2026-10-10T15:23:56.7737272Z ##[group]Cleaning untracked files
+2026-10-10T15:23:56.7738318Z [command]/usr/bin/git clean -ffdx
+2026-10-10T15:23:56.7758364Z ##[endgroup]
+2026-10-10T15:23:56.7759885Z ##[group]Fetching the repository
+2026-10-10T15:23:56.7761009Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +cee90d2c3df440078028f8f2d59fe2d48c3b7724:refs/remotes/origin/main
+2026-10-10T15:23:57.6256241Z From https://github.com/kerklangsi/MY-tv
+2026-10-10T15:23:57.6258074Z  * [new ref]         cee90d2c3df440078028f8f2d59fe2d48c3b7724 -> origin/main
+2026-10-10T15:23:57.6293994Z ##[endgroup]
+2026-10-10T15:23:57.6296338Z ##[group]Determining the checkout info
+2026-10-10T15:23:57.6297354Z ##[endgroup]
+2026-10-10T15:23:57.6298586Z ##[group]Checking out the ref
+2026-10-10T15:23:57.6299863Z [command]/usr/bin/git checkout --progress --force -B main refs/remotes/origin/main
+2026-10-10T15:23:57.6341258Z Reset branch 'main'
+2026-10-10T15:23:57.6343058Z Branch 'main' set up to track remote branch 'main' from 'origin'.
+2026-10-10T15:23:57.6345914Z Switched to a new branch 'main'
+2026-10-10T15:23:57.6358359Z ##[endgroup]
+2026-10-10T15:23:57.6384241Z [command]/usr/bin/git log -1 --format='%H'
+2026-10-10T15:23:57.6401614Z 'cee90d2c3df440078028f8f2d59fe2d48c3b7724'
+2026-10-10T15:23:57.6599981Z ##[group]Run actions/setup-python@v7
+2026-10-10T15:23:57.6600868Z with:
+2026-10-10T15:23:57.6601337Z   python-version: 3.12
+2026-10-10T15:23:57.6601777Z   check-latest: false
+2026-10-10T15:23:57.6602213Z   token: ***
+2026-10-10T15:23:57.6602652Z   update-environment: true
+2026-10-10T15:23:57.6603095Z   allow-prereleases: false
+2026-10-10T15:23:57.6603525Z   freethreaded: false
+2026-10-10T15:23:57.6603957Z ##[endgroup]
+2026-10-10T15:23:57.7317208Z [command]/usr/bin/python3 -c "import sys; print(sys.version)"
+2026-10-10T15:23:57.7523912Z 3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]
+2026-10-10T15:23:57.7533036Z Successfully setup Python 3.12
+2026-10-10T15:23:57.7738275Z ##[group]Run pip install -r requirements.txt
+2026-10-10T15:23:57.7738872Z [36;1mpip install -r requirements.txt[0m
+2026-10-10T15:23:57.7766324Z shell: /usr/bin/bash -e {0}
+2026-10-10T15:23:57.7766782Z ##[endgroup]
+2026-10-10T15:23:58.5528022Z Requirement already satisfied: requests in /usr/lib/python3/dist-packages (from -r requirements.txt (line 1)) (2.31.0)
+2026-10-10T15:23:58.5540320Z Requirement already satisfied: beautifulsoup4 in /usr/local/lib/python3.12/dist-packages (from -r requirements.txt (line 2)) (4.14.2)
+2026-10-10T15:23:58.5547466Z Requirement already satisfied: pytz in /usr/local/lib/python3.12/dist-packages (from -r requirements.txt (line 3)) (2025.2)
+2026-10-10T15:23:58.5552396Z Requirement already satisfied: soupsieve>1.2 in /usr/local/lib/python3.12/dist-packages (from beautifulsoup4->-r requirements.txt (line 2)) (2.8)
+2026-10-10T15:23:58.6496695Z ##[group]Run Refresh Auth Tokens
+2026-10-10T15:23:58.6497148Z [36;1mpython -u script/auth.py[0m
+2026-10-10T15:23:58.6521996Z shell: /usr/bin/bash -e {0}
+2026-10-10T15:23:58.6522409Z ##[endgroup]
+2026-10-10T15:23:59.0145892Z [2026-10-10 15:23:58] [INFO] [AUTH] Loading existing token file: token.json
+2026-10-10T15:23:59.0149021Z [2026-10-10 15:23:58] [INFO] [TONTON] Fetching new authentication token...
+2026-10-10T15:23:59.3900030Z [2026-10-10 15:23:59] [INFO] [TONTON] Extracted script URL: https://www.tonton.com.my/4a4dfc0500cb4aa2ae09fbe79eeadfb3/en/home/_buildManifest.js
+2026-10-10T15:23:59.4218671Z [2026-10-10 15:23:59] [INFO] [TONTON] Extracted buildId: 4a4dfc0500cb4aa2ae09fbe79eeadfb3
+2026-10-10T15:24:00.6728072Z [2026-10-10 15:24:00] [INFO] [TONTON] Anonymous token acquired successfully
+2026-10-10T15:24:00.6738951Z [2026-10-10 15:24:00] [INFO] [MYTV] Fetching new authentication token...
+2026-10-10T15:24:01.3289053Z [2026-10-10 15:24:01] [INFO] [MYTV] Token acquired successfully
+2026-10-10T15:24:01.3298642Z [2026-10-10 15:24:01] [INFO] [UNIFI] Fetching new authentication token...
+2026-10-10T15:24:02.3995872Z [2026-10-10 15:24:02] [INFO] [UNIFI] Session acquired successfully
+2026-10-10T15:24:02.4005118Z [2026-10-10 15:24:02] [INFO] [AUTH] Token file saved successfully: token.json
+2026-10-10T15:24:02.4172483Z ##[group]Run Commit and push changes
+2026-10-10T15:24:02.4172960Z [36;1mgit config --global user.name "github-actions[bot]"
+2026-10-10T15:24:02.4173427Z git config --global user.email "github-actions[bot]@users.noreply.github.com"
+2026-10-10T15:24:02.4173872Z git add token.json
+2026-10-10T15:24:02.4174316Z git diff --staged --quiet || git commit -m "Auto refresh token [skip ci]"
+2026-10-10T15:24:02.4174780Z git push
+2026-10-10T15:24:02.4201389Z [0m
+2026-10-10T15:24:02.4201824Z shell: /usr/bin/bash -e {0}
+2026-10-10T15:24:02.4202242Z ##[endgroup]
+2026-10-10T15:24:02.4419992Z [main fa53265] Auto refresh token [skip ci]
+2026-10-10T15:24:02.4421255Z  1 file changed, 7 insertions(+), 7 deletions(-)
+2026-10-10T15:24:09.1105995Z To https://github.com/kerklangsi/MY-tv
+2026-10-10T15:24:09.1106883Z    cee90d2..fa53265  main -> main
+2026-10-10T15:24:09.1309869Z Post job cleanup.
+2026-10-10T15:24:09.1843460Z [command]/usr/bin/git version
+2026-10-10T15:24:09.1873138Z git version 2.34.1
+2026-10-10T15:24:09.1895690Z Temporarily overriding HOME='/opt/github-runner/RunnerMY-tv3/_work/_temp/2c6cb5c5-ea5c-4d57-9d7a-cfb159f518e9' before making global git config changes
+2026-10-10T15:24:09.1897000Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-10T15:24:09.1901306Z [command]/usr/bin/git config --global --add safe.directory /opt/github-runner/RunnerMY-tv3/_work/MY-tv/MY-tv
+2026-10-10T15:24:09.1906734Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-10T15:24:09.1913939Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-10T15:24:09.2120025Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-10T15:24:09.2126233Z http.https://github.com/.extraheader
+2026-10-10T15:24:09.2131976Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-10-10T15:24:09.2139045Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-10T15:24:09.2323364Z Cleaning up orphan processes

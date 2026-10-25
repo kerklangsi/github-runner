@@ -1,9 +1,10 @@
-﻿'use strict';
-const logService = require('./logService');
+'use strict';
+const globalLog = require('./globalLog');
 
 let watchdogTimer = null;
 let watchdogSettings = { enabled: false, intervalSec: 30 };
 
+// Updates watchdog settings and restarts background timer.
 function updateSettings(settings) {
   watchdogSettings = {
     enabled: !!settings.watchdogEnabled,
@@ -12,14 +13,16 @@ function updateSettings(settings) {
   restartWatchdog();
 }
 
+// Restarts background watchdog monitoring timer according to configured interval.
 function restartWatchdog() {
   if (watchdogTimer) { clearInterval(watchdogTimer); watchdogTimer = null; }
   if (watchdogSettings.enabled) {
     watchdogTimer = setInterval(runWatchdog, watchdogSettings.intervalSec * 1000);
-    logService.addSystemLog('INFO', `Auto-Restart Watchdog started (interval: ${watchdogSettings.intervalSec}s)`);
+    globalLog.writeLog('INFO', `Auto-Restart Watchdog started (interval: ${watchdogSettings.intervalSec}s)`);
   }
 }
 
+// Checks offline or crashed runners and triggers automatic restart.
 async function runWatchdog() {
   try {
     const runnerService = require('./runnerService');
@@ -28,17 +31,17 @@ async function runWatchdog() {
       if (!runner.watchdog) continue;
       const status = runner.status;
       if (status === 'OFFLINE' || status === 'CRASHED' || status === 'ERROR') {
-        logService.addSystemLog('WARN', `[Watchdog] Runner '${runner.name}' is ${status} - auto-restarting...`);
+        globalLog.writeLog('WARN', `[Watchdog] Runner '${runner.name}' is ${status} - auto-restarting...`);
         try {
           await runnerService.startRunner(runner.id);
-          logService.addSystemLog('INFO', `[Watchdog] Runner '${runner.name}' restart triggered.`);
+          globalLog.writeLog('INFO', `[Watchdog] Runner '${runner.name}' restart triggered.`);
         } catch (e) {
-          logService.addSystemLog('ERROR', `[Watchdog] Failed to restart '${runner.name}': ${e.message}`);
+          globalLog.writeLog('ERROR', `[Watchdog] Failed to restart '${runner.name}': ${e.message}`);
         }
       }
     }
   } catch (e) {
-    logService.addSystemLog('ERROR', `[Watchdog] Error during watchdog cycle: ${e.message}`);
+    globalLog.writeLog('ERROR', `[Watchdog] Error during watchdog cycle: ${e.message}`);
   }
 }
 

@@ -10,7 +10,8 @@ export default function GlobalLogsTab({
   renderLogLines,
   handleCopyLogs,
   handleSaveLogFile,
-  settings
+  settings,
+  handleLogLevelChange
 }) {
   const [copied, setCopied] = useState(false);
   const filteredLogs = globalLogs.filter(line => !globalLogSearch || line.toLowerCase().includes(globalLogSearch.toLowerCase()));
@@ -29,6 +30,20 @@ export default function GlobalLogsTab({
         </div>
 
         <div className="flex items-center gap-2">
+          {handleLogLevelChange && (
+            <select
+              value={settings.logLevel || 'INFO'}
+              onChange={e => handleLogLevelChange(e.target.value)}
+              className="bg-[#0d1117] border border-[#30363d] rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-[#58a6ff] font-medium"
+              title="Filter log verbosity level"
+            >
+              <option value="INFO">INFO (Clean)</option>
+              <option value="DEBUG">DEBUG (Verbose)</option>
+              <option value="WARN">WARN</option>
+              <option value="ERROR">ERROR</option>
+              <option value="ALL">ALL</option>
+            </select>
+          )}
           <input 
             type="text"
             placeholder="Search global logs..."

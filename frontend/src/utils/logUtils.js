@@ -163,19 +163,23 @@ export function normalizeLogLine(line, sourceHint = 'global', lastTs = '', showS
   }
 
   // Parse inner .NET diagnostic header [YYYY-MM-DD HH:MM:SSZ LEVEL Component] Message
-  const innerDiag = msg.match(/^\[(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)(?:\s+([A-Z]{3,5}))?(?:\s+([^\]]+))?\]\s*(.*)/s);
+  const innerDiag = msg.match(/^\[(?:(?:RUNNER|WORKER)\s+)?(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)(?:\s+([A-Z]{3,5}))?(?:\s+([^\]]+))?\]\s*(.*)/s);
   if (innerDiag) {
     if (!timestamp) timestamp = innerDiag[1].replace('T', ' ').slice(0, 19);
     if (innerDiag[2]) level = innerDiag[2] === 'ERR' ? 'ERROR' : innerDiag[2];
     msg = innerDiag[3] ? `[${innerDiag[3].trim()}] ${innerDiag[4].trim()}` : innerDiag[4].trim();
   }
 
+  // Strip redundant adjacent timestamps at start of message
+  msg = msg.replace(/^(?:\[\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?\]|\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?[: ]?)\s*/s, '');
+
   const ts = timestamp || lastTs;
   const displayTs = convertTimezone(ts, settings.timezone);
 
-  const lvlMatch = msg.match(/^\[([A-Z]{3,5})(?:\s+[^\]]*)?\]\s*(.*)/s);
+  const lvlMatch = msg.match(/^\[(INFO|WARN|WARNING|ERROR|ERR|DEBUG|DBG|TRACE|TRC)\]\s*(.*)/is);
   if (lvlMatch) {
-    level = lvlMatch[1];
+    const rawLvl = lvlMatch[1].toUpperCase();
+    level = rawLvl === 'ERR' ? 'ERROR' : (rawLvl === 'DBG' || rawLvl === 'TRC' || rawLvl === 'TRACE') ? 'DEBUG' : rawLvl === 'WARNING' ? 'WARN' : rawLvl;
     msg = lvlMatch[2].trim();
   } else {
     if (/\[ERROR\]|\[ERR\]/i.test(msg)) level = 'ERROR';

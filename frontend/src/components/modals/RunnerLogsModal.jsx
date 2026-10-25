@@ -15,7 +15,9 @@ export default function RunnerLogsModal({
   handleSaveLogFile,
   logSource = 'workflow',
   switchSource,
-  handleLogSourceChange
+  handleLogSourceChange,
+  settings = {},
+  handleLogLevelChange
 }) {
   const [copied, setCopied] = useState(false);
   if (!isLogModalOpen || !selectedRunner) return null;
@@ -60,7 +62,21 @@ export default function RunnerLogsModal({
             </button>
           </div>
 
-          <div className="flex items-center gap-2 flex-1 max-w-sm">
+          <div className="flex items-center gap-2 flex-1 max-w-md">
+            {handleLogLevelChange && (
+              <select
+                value={(settings && settings.logLevel) || 'INFO'}
+                onChange={e => handleLogLevelChange(e.target.value)}
+                className="bg-[#161b22] border border-[#30363d] rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-[#58a6ff] font-medium shrink-0"
+                title="Filter runner log verbosity"
+              >
+                <option value="INFO">INFO (Clean Steps 13-14)</option>
+                <option value="DEBUG">DEBUG (All Steps 1-12)</option>
+                <option value="WARN">WARN</option>
+                <option value="ERROR">ERROR</option>
+                <option value="ALL">ALL</option>
+              </select>
+            )}
             <input 
               type="text" 
               placeholder={`Search ${isWorkflow ? 'job-logs.txt' : 'daemon logs'}...`} 

@@ -6,7 +6,7 @@ const { exec } = require('child_process');
 
 const runnerService = require('./services/runnerService');
 const systemService = require('./services/systemService');
-const logService = require('./services/logService');
+const globalLog = require('./services/globalLog');
 const watchdogService = require('./services/watchdogService');
 const webhookService = require('./services/webhookService');
 const versionService = require('./services/versionService');
@@ -70,7 +70,7 @@ app.post('/api/auth/change-username', (req, res) => {
   currentAuth.username = cleanUsername;
   db.saveAuth(currentAuth);
 
-  logService.addSystemLog('INFO', `Administrator username changed from '${oldUsername}' to '${cleanUsername}'.`);
+  globalLog.writeLog('INFO', `Administrator username changed from '${oldUsername}' to '${cleanUsername}'.`);
   res.json({ success: true, username: cleanUsername, message: 'Username updated successfully' });
 });
 
@@ -111,7 +111,7 @@ app.post('/api/user/avatar', (req, res) => {
   }
 
   db.saveAuth(currentAuth);
-  logService.addSystemLog('INFO', 'Updated user profile avatar picture.');
+  globalLog.writeLog('INFO', 'Updated user profile avatar picture.');
   res.json({ success: true, avatarUrl: currentAuth.avatarUrl });
 });
 
@@ -211,12 +211,12 @@ app.get('/api/logs/global', (req, res) => {
   const limit = req.query.limit || 300;
   const search = req.query.search || '';
   const level = req.query.level || '';
-  const result = logService.getGlobalLogs({ limit, search, level });
+  const result = globalLog.getGlobalLogs({ limit, search, level });
   res.json(result);
 });
 
 app.get('/api/logs/global/download', (req, res) => {
-  const result = logService.getGlobalLogs({ limit: 10000 });
+  const result = globalLog.getGlobalLogs({ limit: 10000 });
   const text = (result.lines || []).join('\r\n');
   const now = new Date().toISOString().slice(0, 10);
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
@@ -229,7 +229,7 @@ app.get('/api/runners/:id/logs', (req, res) => {
   const level = req.query.level || '';
   const limit = req.query.limit || 500;
   const source = req.query.source || '';
-  const result = logService.getRunnerLogs(req.params.id, { search, level, limit, source });
+  const result = globalLog.getRunnerLogs(req.params.id, { search, level, limit, source });
   res.json(result);
 });
 
@@ -237,7 +237,7 @@ app.get('/api/runners/:id/logs/download', (req, res) => {
   const runner = runnerService.getRunnerById(req.params.id);
   const runnerName = runner ? (runner.name || req.params.id) : req.params.id;
   const source = req.query.source || '';
-  const result = logService.getRunnerLogs(req.params.id, { limit: 10000, source });
+  const result = globalLog.getRunnerLogs(req.params.id, { limit: 10000, source });
   const isWorkflow = result.source === 'workflow';
   const filename = isWorkflow ? `${runnerName}_job-logs.txt` : `${runnerName}_daemon.log`;
   const header = `=============================================================\r\nGitHub Actions Runner: ${runnerName} (${isWorkflow ? 'Workflow job-logs.txt' : 'Daemon'})\r\nExported: ${new Date().toISOString()}\r\n=============================================================\r\n\r\n`;
@@ -248,7 +248,7 @@ app.get('/api/runners/:id/logs/download', (req, res) => {
 });
 
 app.post('/api/runners/:id/logs/clear', (req, res) => {
-  logService.clearRunnerLogs(req.params.id);
+  globalLog.clearRunnerLogs(req.params.id);
   res.json({ success: true, message: 'Runner logs cleared successfully' });
 });
 
@@ -261,7 +261,7 @@ app.get('/api/runners/:id/logs/stream', (req, res) => {
   const runnerId = req.params.id;
   const source = req.query.source || '';
   const interval = setInterval(() => {
-    const logs = logService.getRunnerLogs(runnerId, { limit: 100, source });
+    const logs = globalLog.getRunnerLogs(runnerId, { limit: 100, source });
     res.write(`data: ${JSON.stringify(logs)}\n\n`);
   }, 2000);
 
@@ -294,13 +294,13 @@ app.post('/api/settings', (req, res) => {
   // Apply watchdog and webhook settings immediately
   watchdogService.updateSettings(req.body);
   webhookService.updateSettings(req.body);
-  logService.addSystemLog('INFO', 'Saved global system and log settings.');
+  globalLog.writeLog('INFO', 'Saved global system and log settings.');
   res.json({ success: true, settings: req.body });
 });
 
 // 11. Clear Global Logs
 app.post('/api/logs/global/clear', (req, res) => {
-  logService.clearGlobalLogs();
+  globalLog.clearGlobalLogs();
   res.json({ success: true, message: 'Global logs buffer cleared successfully' });
 });
 
@@ -309,7 +309,7 @@ app.post('/api/logs/archives/clean', (req, res) => {
   const settings = db.getSettings();
   const retention = (req.body && req.body.retention) || settings.archiveRetention || 'never';
   const customDays = (req.body && req.body.customDays) || settings.archiveRetentionDays || 0;
-  const result = logService.cleanArchives(retention, customDays);
+  const result = globalLog.cleanArchives(retention, customDays);
   res.json({ success: true, deleted: result.deleted });
 });
 
@@ -458,7 +458,7 @@ const handleRestoreReq = (req, res) => {
         }
       }
     }
-    logService.addSystemLog('INFO', `Backup restored: ${restored} runner container config(s) processed.`);
+    globalLog.writeLog('INFO', `Backup restored: ${restored} runner container config(s) processed.`);
     res.json({ success: true, runnersRestored: restored });
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -513,17 +513,17 @@ app.listen(PORT, '0.0.0.0', () => {
   const savedSettings = db.getSettings();
   watchdogService.updateSettings(savedSettings);
   webhookService.updateSettings(savedSettings);
-  logService.startHarvester();
+  globalLog.startHarvester();
 
   // Hourly background cleaner for log archives
   setInterval(() => {
     const s = db.getSettings();
     if (s.archiveRetention && s.archiveRetention !== 'never') {
-      logService.cleanArchives(s.archiveRetention, s.archiveRetentionDays);
+      globalLog.cleanArchives(s.archiveRetention, s.archiveRetentionDays);
     }
   }, 60 * 60 * 1000);
 
   if (savedSettings.archiveRetention && savedSettings.archiveRetention !== 'never') {
-    logService.cleanArchives(savedSettings.archiveRetention, savedSettings.archiveRetentionDays);
+    globalLog.cleanArchives(savedSettings.archiveRetention, savedSettings.archiveRetentionDays);
   }
 });

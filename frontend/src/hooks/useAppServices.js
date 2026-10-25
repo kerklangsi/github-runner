@@ -55,7 +55,7 @@ export function useAppServices() {
         if (activeTab === 'global-logs') logs.fetchGlobalLogs();
         if (runners.isLogModalOpenRef.current && runners.selectedRunnerRef.current) {
           const lvl = settings.logLevelRef.current || 'INFO';
-          const src = runners.logSource || 'workflow';
+          const src = runners.logSourceRef?.current || 'workflow';
           fetch(`/api/runners/${runners.selectedRunnerRef.current.id}/logs?limit=500&level=${lvl}&source=${src}`)
             .then(res => res.json())
             .then(data => {

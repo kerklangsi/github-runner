@@ -36,11 +36,13 @@ export function useRunnersService(triggerToast, showConfirm, logLevelRef) {
   const logConsoleRef = useRef(null);
   const selectedRunnerRef = useRef(null);
   const isLogModalOpenRef = useRef(false);
+  const logSourceRef = useRef('workflow');
 
   useEffect(() => {
     selectedRunnerRef.current = selectedRunner;
     isLogModalOpenRef.current = isLogModalOpen;
-  }, [selectedRunner, isLogModalOpen]);
+    logSourceRef.current = logSource;
+  }, [selectedRunner, isLogModalOpen, logSource]);
 
   function fetchRunners() {
     fetch('/api/runners')
@@ -217,18 +219,21 @@ export function useRunnersService(triggerToast, showConfirm, logLevelRef) {
     setSelectedRunner(runner);
     setIsLogModalOpen(true);
     setLogSource(source);
+    logSourceRef.current = source;
+    setRunnerLogs([]);
     const lvl = logLevelRef.current || 'INFO';
     fetch(`/api/runners/${runner.id}/logs?limit=500&level=${lvl}&source=${source}`)
       .then(res => res.json())
       .then(data => {
         if (data.lines) setRunnerLogs(data.lines);
-        if (data.source) setLogSource(data.source);
       });
   }
 
   // Switch log stream source between workflow and daemon
   function switchSource(source) {
     setLogSource(source);
+    logSourceRef.current = source;
+    setRunnerLogs([]);
     if (!selectedRunner) return;
     const lvl = logLevelRef.current || 'INFO';
     fetch(`/api/runners/${selectedRunner.id}/logs?limit=500&level=${lvl}&source=${source}`)
@@ -256,7 +261,7 @@ export function useRunnersService(triggerToast, showConfirm, logLevelRef) {
     selectedRunner, setSelectedRunner, runnerLogs, setRunnerLogs, logSearch, setLogSearch, showAddToken, setShowAddToken,
     showRunnerTokens, setShowRunnerTokens, unlockedRunnerTokens, setUnlockedRunnerTokens, addForm, setAddForm,
     runnerEdits, setRunnerEdits, deleteConfirmModal, setDeleteConfirmModal, editModeRunners, setEditModeRunners,
-    logConsoleRef, selectedRunnerRef, isLogModalOpenRef, logSource, setLogSource, switchSource, handleLogSourceChange: switchSource,
+    logConsoleRef, selectedRunnerRef, isLogModalOpenRef, logSource, logSourceRef, setLogSource, switchSource, handleLogSourceChange: switchSource,
     handleConfigFileUpload, handleAddRunner, handleStart, handleStop, handleRestart, handleDelete,
     handleUpdateRunnerInlineConfig, handleExportRunnerConfig, handleClearRunnerLogs, openLogs, openAddModal, openDeleteConfirmModal
   };

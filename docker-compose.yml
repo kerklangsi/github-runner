@@ -12,9 +12,6 @@ services:
         protocol: tcp
     volumes:
       - type: bind
-        source: /var/run/docker.sock
-        target: /var/run/docker.sock
-      - type: bind
         source: /DATA/AppData/github-runner/data
         target: /app/data
       - type: bind
